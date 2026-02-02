@@ -9,6 +9,8 @@ import {
   type EdgeChange,
 } from '@vue-flow/core'
 import { useWorkflowStore } from '../stores/workflow'
+import { useExecutionLogStore } from '../stores/executionLog'
+import type { Execution, ExecutionEntry } from '../stores/executionLog'
 import WorkflowNode from './WorkflowNode.vue'
 
 const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
@@ -17,6 +19,7 @@ const WORKFLOW_ID = 'workflow-editor'
 
 const flowStore = useVueFlow(WORKFLOW_ID)
 const workflowStore = useWorkflowStore()
+const executionLogStore = useExecutionLogStore()
 const {
   nodes,
   edges,
@@ -145,6 +148,66 @@ function onNodeExecute(id: string) {
   console.log('Execute node:', id)
 }
 
+/** Get nodes in execution order: triggers first, then nodes in topological order by edges. */
+function getExecutionOrder(): { id: string; label: string }[] {
+  const nodes = workflowStore.nodes
+  const edges = workflowStore.edges
+  if (nodes.length === 0) return []
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const targetsBySource = new Map<string, string[]>()
+  const inDegree = new Map<string, number>()
+  nodes.forEach((n) => inDegree.set(n.id, 0))
+  edges.forEach((e) => {
+    if (!byId.has(e.source) || !byId.has(e.target)) return
+    const list = targetsBySource.get(e.source) ?? []
+    list.push(e.target)
+    targetsBySource.set(e.source, list)
+    inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1)
+  })
+  const queue: string[] = nodes.filter((n) => inDegree.get(n.id) === 0).map((n) => n.id)
+  const order: { id: string; label: string }[] = []
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    const node = byId.get(id)
+    if (node) order.push({ id: node.id, label: node.label ?? (node.data?.label as string) ?? 'Node' })
+    ;(targetsBySource.get(id) ?? []).forEach((tid) => {
+      const d = (inDegree.get(tid) ?? 1) - 1
+      inDegree.set(tid, d)
+      if (d === 0) queue.push(tid)
+    })
+  }
+  return order
+}
+
+function runWorkflow() {
+  executionLogStore.clearExecution()
+  const order = getExecutionOrder()
+  if (order.length === 0) return
+  const startedAt = Date.now()
+  const entries: ExecutionEntry[] = order.map((node, index) => {
+    const durationMs = 3 + (index % 7)
+    const output: Record<string, unknown> = index === 0 ? { myNewField: 1 } : { result: `output from ${node.label}`, index }
+    return {
+      id: `entry-${node.id}-${startedAt}`,
+      nodeId: node.id,
+      nodeName: node.label,
+      output,
+      durationMs,
+      status: 'success' as const,
+    }
+  })
+  const durationMs = Date.now() - startedAt
+  const execution: Execution = {
+    id: `exec-${startedAt}`,
+    startedAt,
+    durationMs,
+    status: 'success',
+    triggerDescription: "When clicking 'Execute workflow'",
+    entries,
+  }
+  executionLogStore.setExecution(execution)
+}
+
 function onNodeSwitchOff(id: string) {
   console.log('Switch off node:', id)
 }
@@ -234,6 +297,19 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
           </svg>
         </button>
       </Panel>
+      <Panel position="bottom-center" class="workflow-execution-panel">
+        <button
+          type="button"
+          class="workflow-controls__btn workflow-controls__btn--run"
+          title="Execution workflow"
+          @click="runWorkflow"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          <span class="workflow-controls__btn-label">Execution workflow</span>
+        </button>
+      </Panel>
     </VueFlow>
 
   </div>
@@ -265,6 +341,11 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
   border: 1px solid #cbd5e1;
   z-index: 10;
   pointer-events: auto;
+}
+
+.workflow-controls__btn-label {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .workflow-controls__btn {
@@ -299,5 +380,31 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
 
 .workflow-controls__btn--add:hover svg {
   fill: #166534;
+}
+
+.workflow-controls__btn--run {
+  flex-direction: row;
+  gap: 6px;
+  width: auto;
+  padding: 8px 10px;
+}
+
+.workflow-controls__btn--run:hover {
+  background: #dcfce7;
+}
+
+.workflow-controls__btn--run:hover svg {
+  fill: #166534;
+}
+
+.workflow-execution-panel {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.workflow-execution-panel .workflow-controls__btn--run {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #cbd5e1;
 }
 </style>

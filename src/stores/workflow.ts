@@ -36,6 +36,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const nodeCount = computed(() => nodes.value.length)
   const edgeCount = computed(() => edges.value.length)
 
+  /** True if the workflow has at least one trigger node (only lower edge, no incoming connections). */
+  const hasTriggerNode = computed(() =>
+    nodes.value.some((n) => n.data?.isTrigger === true)
+  )
+
   function setSelectedNode(id: string | null) {
     selectedNodeId.value = id
   }
@@ -110,6 +115,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     hasSelection,
     nodeCount,
     edgeCount,
+    hasTriggerNode,
     setSelectedNode,
     setWorkflowName,
     clearSelection,

@@ -7,12 +7,12 @@ import { triggerNode, supportedNodeList } from './constants'
 
 const workflowStore = useWorkflowStore()
 
-// When workflow has no nodes → show trigger list; otherwise show supportedNodeList.
-// Workflow nodes are kept in the store (workflowStore.nodes).
+// No trigger node on canvas → show trigger list (so user can add one).
+// Has trigger node → show supported nodes only. Delete trigger → show trigger list again.
 const allItems = computed(() =>
-  workflowStore.nodeCount === 0
-    ? triggerNode.map((node) => node.name)
-    : supportedNodeList.map((node) => node.name)
+  workflowStore.hasTriggerNode
+    ? supportedNodeList.map((node) => node.name)
+    : triggerNode.map((node) => node.name)
 )
 
 // What is currently visible in the list view (filtered by search).
@@ -35,7 +35,7 @@ const handleItemClick = (item: string) => {
     <div class="p-3 border-b border-slate-800">
       <SearchBar
         :items="allItems"
-        :placeholder="workflowStore.nodeCount === 0 ? 'Search triggers...' : 'Search nodes...'"
+        :placeholder="workflowStore.hasTriggerNode ? 'Search nodes...' : 'Search triggers...'"
         @update:results="handleResults"
       />
     </div>
@@ -44,8 +44,8 @@ const handleItemClick = (item: string) => {
       <ListView
         :items="filteredItems"
         :draggable="true"
-        :is-trigger-list="workflowStore.nodeCount === 0"
-        :empty-text="workflowStore.nodeCount === 0 ? 'No triggers found' : 'No nodes found'"
+        :is-trigger-list="!workflowStore.hasTriggerNode"
+        :empty-text="workflowStore.hasTriggerNode ? 'No nodes found' : 'No triggers found'"
         @itemClick="handleItemClick"
       />
     </div>
