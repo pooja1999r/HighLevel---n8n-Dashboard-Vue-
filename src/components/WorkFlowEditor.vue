@@ -10,6 +10,7 @@ import {
 } from '@vue-flow/core'
 import { useWorkflowStore } from '../stores/workflow'
 import { useExecutionLogStore } from '../stores/executionLog'
+import { useNodeModalStore } from '../stores/nodeModal'
 import type { Execution, ExecutionEntry } from '../stores/executionLog'
 import WorkflowNode from './WorkflowNode.vue'
 
@@ -20,6 +21,7 @@ const WORKFLOW_ID = 'workflow-editor'
 const flowStore = useVueFlow(WORKFLOW_ID)
 const workflowStore = useWorkflowStore()
 const executionLogStore = useExecutionLogStore()
+const nodeModalStore = useNodeModalStore()
 const {
   nodes,
   edges,
@@ -217,7 +219,8 @@ function onNodeDelete(id: string) {
 }
 
 function onNodeOpen(id: string) {
-  console.log('Open node:', id)
+  const node = workflowStore.nodes.find((n) => n.id === id)
+  if (node) nodeModalStore.openWorkflow(node)
 }
 
 function onNodeRename(id: string) {

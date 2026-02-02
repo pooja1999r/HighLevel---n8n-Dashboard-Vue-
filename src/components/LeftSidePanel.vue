@@ -3,9 +3,11 @@ import { ref, computed } from 'vue'
 import SearchBar from './ui-components/SearchBar.vue'
 import ListView from './ui-components/ListView.vue'
 import { useWorkflowStore } from '../stores/workflow'
+import { useNodeModalStore } from '../stores/nodeModal'
 import { triggerNode, supportedNodeList } from './constants'
 
 const workflowStore = useWorkflowStore()
+const nodeModalStore = useNodeModalStore()
 
 // No trigger node on canvas → show trigger list (so user can add one).
 // Has trigger node → show supported nodes only. Delete trigger → show trigger list again.
@@ -24,9 +26,20 @@ const handleResults = (items: string[]) => {
   filteredItems.value = items
 }
 
-// Handle click on a list item (for now, just log it)
+// Handle click on a list item: open node info modal with template data
 const handleItemClick = (item: string) => {
-  console.log('Clicked:', item)
+  const template =
+    triggerNode.find((n) => n.name === item) ??
+    supportedNodeList.find((n) => n.name === item)
+  if (template) {
+    nodeModalStore.openTemplate({
+      name: template.name,
+      description: template.description,
+      icon: template.icon,
+      url: template.url,
+      actions: (template as { actions?: Array<{ name: string; description?: string }> }).actions,
+    })
+  }
 }
 </script>
 

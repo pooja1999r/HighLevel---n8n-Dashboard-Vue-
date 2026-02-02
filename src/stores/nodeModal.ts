@@ -1,0 +1,44 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import type { WorkflowNodeState } from './workflow'
+
+/** Template node from constants (trigger or supported list). */
+export interface TemplateNodeInfo {
+  name: string
+  description?: string
+  icon?: string
+  url?: string
+  actions?: Array<{ name: string; description?: string }>
+}
+
+export type NodeModalPayload =
+  | { type: 'template'; data: TemplateNodeInfo }
+  | { type: 'workflow'; data: WorkflowNodeState }
+
+export const useNodeModalStore = defineStore('nodeModal', () => {
+  const isOpen = ref(false)
+  const payload = ref<NodeModalPayload | null>(null)
+
+  function openTemplate(data: TemplateNodeInfo) {
+    payload.value = { type: 'template', data }
+    isOpen.value = true
+  }
+
+  function openWorkflow(data: WorkflowNodeState) {
+    payload.value = { type: 'workflow', data }
+    isOpen.value = true
+  }
+
+  function close() {
+    isOpen.value = false
+    payload.value = null
+  }
+
+  return {
+    isOpen,
+    payload,
+    openTemplate,
+    openWorkflow,
+    close,
+  }
+})

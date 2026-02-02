@@ -2,6 +2,7 @@
 import LeftSidePanel from './components/LeftSidePanel.vue'
 import WorkFlowEditor from './components/WorkFlowEditor.vue'
 import ExecutionLogPanel from './components/ExecutionLogPanel.vue'
+import NodeInfoModal from './components/NodeInfoModal.vue'
 import { useExecutionLogStore } from './stores/executionLog'
 
 const executionLogStore = useExecutionLogStore()
@@ -9,6 +10,7 @@ const executionLogStore = useExecutionLogStore()
 
 <template>
   <div class="app-root">
+    <NodeInfoModal />
     <LeftSidePanel />
     <main class="app-main">
       <div class="app-editor">
