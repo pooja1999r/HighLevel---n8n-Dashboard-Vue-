@@ -8,11 +8,13 @@
     <li
       v-for="item in items"
       :key="item"
+      :draggable="draggable"
       @click="() => emit('itemClick', item)"
-       class="px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 flex items-center justify-between text-slate-900"
+      @dragstart="onDragStart($event, item)"
+      class="px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 flex items-center justify-between text-slate-900 select-none"
     >
       <span>{{ item }}</span>
-      <span class="text-xs text-slate-400">Click</span>
+      <span class="text-xs text-slate-400">{{ draggable ? 'Drag to canvas' : 'Click' }}</span>
     </li>
   </ul>
 </template>
@@ -22,13 +24,21 @@ const props = withDefaults(
   defineProps<{
     items: string[]
     emptyText?: string
+    draggable?: boolean
   }>(),
   {
     emptyText: 'No items found',
+    draggable: false,
   }
 )
 
 const emit = defineEmits<{
   (e: 'itemClick', item: string): void
 }>()
+
+function onDragStart(event: DragEvent, item: string) {
+  if (!props.draggable || !event.dataTransfer) return
+  event.dataTransfer.setData('application/json', JSON.stringify({ label: item }))
+  event.dataTransfer.effectAllowed = 'move'
+}
 </script>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SearchBar from './ui-components/SearchBar.Vue'
-import ListView from './ui-components/ListView.Vue'
+import SearchBar from './ui-components/SearchBar.vue'
+import ListView from './ui-components/ListView.vue'
 import { triggerNode } from './constants'
 
 // Full list of trigger node names
@@ -32,7 +32,11 @@ const handleItemClick = (item: string) => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-2">
-      <ListView :items="filteredItems" @itemClick="handleItemClick" />
+      <ListView
+      :items="filteredItems"
+      :draggable="true"
+      @itemClick="handleItemClick"
+    />
     </div>
   </aside>
 </template>
