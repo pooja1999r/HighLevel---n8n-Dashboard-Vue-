@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
+import { triggerNode } from './constants'
 
 const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
 
-const props = defineProps<NodeProps<{ label?: string }>>()
+const props = defineProps<NodeProps<{ label?: string; isTrigger?: boolean }>>()
+
+/** Trigger nodes have only a lower edge (output); they cannot have incoming connections. */
+const isTriggerNode = computed(() => {
+  if (props.data?.isTrigger === true) return true
+  const label = props.label ?? props.data?.label
+  return typeof label === 'string' && triggerNode.some((t) => t.name === label)
+})
 
 type Handlers = {
   onExecute: (id: string) => void
@@ -37,7 +45,8 @@ function run(fn: keyof Handlers) {
 
 <template>
   <div class="workflow-node">
-    <Handle type="target" :position="Position.Top" :connectable="connectable" class="node-handle" />
+    <!-- Trigger nodes: no upper edge (no target handle); only lower edge (children). -->
+    <Handle v-if="!isTriggerNode" type="target" :position="Position.Top" :connectable="connectable" class="node-handle" />
     <Handle type="source" :position="Position.Bottom" :connectable="connectable" class="node-handle" />
 
     <div

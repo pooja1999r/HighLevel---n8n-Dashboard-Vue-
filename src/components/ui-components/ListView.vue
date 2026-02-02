@@ -25,10 +25,13 @@ const props = withDefaults(
     items: string[]
     emptyText?: string
     draggable?: boolean
+    /** When true, dragged items are marked as trigger nodes (only lower edge, no incoming connections). */
+    isTriggerList?: boolean
   }>(),
   {
     emptyText: 'No items found',
     draggable: false,
+    isTriggerList: false,
   }
 )
 
@@ -38,7 +41,10 @@ const emit = defineEmits<{
 
 function onDragStart(event: DragEvent, item: string) {
   if (!props.draggable || !event.dataTransfer) return
-  event.dataTransfer.setData('application/json', JSON.stringify({ label: item }))
+  event.dataTransfer.setData(
+    'application/json',
+    JSON.stringify({ label: item, isTrigger: props.isTriggerList })
+  )
   event.dataTransfer.effectAllowed = 'move'
 }
 </script>

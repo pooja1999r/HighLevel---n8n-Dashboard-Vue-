@@ -99,12 +99,12 @@ function onDrop(event: DragEvent) {
   const data = event.dataTransfer?.getData('application/json')
   if (!data) return
   try {
-    const { label } = JSON.parse(data) as { label: string }
+    const { label, isTrigger } = JSON.parse(data) as { label: string; isTrigger?: boolean }
     const position = screenToFlowCoordinate({
       x: event.clientX,
       y: event.clientY,
     })
-    addNewNode(position.x, position.y, label ?? 'Node')
+    addNewNode(position.x, position.y, label ?? 'Node', isTrigger ?? false)
   } catch {
     // ignore
   }
@@ -115,13 +115,13 @@ function onDragOver(event: DragEvent) {
   event.dataTransfer!.dropEffect = 'move'
 }
 
-function addNewNode(x: number, y: number, label: string) {
+function addNewNode(x: number, y: number, label: string, isTrigger = false) {
   addNodes({
     id: `node-${Date.now()}`,
     type: 'workflow',
     position: { x, y },
     label,
-    data: { label },
+    data: { label, isTrigger },
   })
 }
 
@@ -169,7 +169,8 @@ function onNodeCopy(id: string) {
   if (!node) return
   const pos = node.position
   const label = (node.data?.label as string) ?? (node.label as string) ?? 'Node'
-  addNewNode(pos.x + 180, pos.y + 100, `Copy of ${label}`)
+  const isTrigger = (node.data?.isTrigger as boolean) ?? false
+  addNewNode(pos.x + 180, pos.y + 100, `Copy of ${label}`, isTrigger)
 }
 
 function onNodeDuplicate(id: string) {
@@ -177,7 +178,8 @@ function onNodeDuplicate(id: string) {
   if (!node) return
   const pos = node.position
   const label = (node.data?.label as string) ?? (node.label as string) ?? 'Node'
-  addNewNode(pos.x + 200, pos.y, label)
+  const isTrigger = (node.data?.isTrigger as boolean) ?? false
+  addNewNode(pos.x + 200, pos.y, label, isTrigger)
 }
 
 provide(WORKFLOW_NODE_HANDLERS_KEY, {
