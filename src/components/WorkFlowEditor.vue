@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { markRaw, provide } from 'vue'
+import { markRaw, provide, onMounted, nextTick } from 'vue'
 import {
   VueFlow,
   useVueFlow,
@@ -8,6 +8,7 @@ import {
   type NodeChange,
   type EdgeChange,
 } from '@vue-flow/core'
+import { useWorkflowStore } from '../stores/workflow'
 import WorkflowNode from './WorkflowNode.vue'
 
 const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
@@ -15,6 +16,7 @@ const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
 const WORKFLOW_ID = 'workflow-editor'
 
 const flowStore = useVueFlow(WORKFLOW_ID)
+const workflowStore = useWorkflowStore()
 const {
   nodes,
   edges,
@@ -23,13 +25,55 @@ const {
   removeNodes,
   applyNodeChanges,
   applyEdgeChanges,
+  setNodes: setFlowNodes,
+  setEdges: setFlowEdges,
+  setViewport,
+  viewport,
   screenToFlowCoordinate,
   zoomIn,
   zoomOut,
   fitView,
   getNodes,
+  getEdges,
   updateNodeData,
 } = flowStore
+
+/** Hydrate Vue Flow from Pinia store (nodes, edges, positions, viewport). */
+function hydrateFromStore() {
+  const storeNodes = workflowStore.nodes
+  const storeEdges = workflowStore.edges
+  const config = workflowStore.configuration
+  if (storeNodes.length > 0 || storeEdges.length > 0) {
+    const flowNodes = storeNodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: { ...(n.data ?? {}), label: n.label },
+    }))
+    setFlowNodes(flowNodes)
+    setFlowEdges([...storeEdges])
+  }
+  if (config.viewport && typeof config.viewport === 'object' && 'x' in config.viewport && 'y' in config.viewport && 'zoom' in config.viewport) {
+    setViewport(config.viewport as { x: number; y: number; zoom: number })
+  }
+}
+
+/** Persist current Vue Flow state to Pinia (after any nodes/edges change). */
+function persistToStore() {
+  workflowStore.syncFromFlow(getNodes.value, getEdges.value)
+}
+
+/** Persist viewport to store when pan/zoom ends. */
+function onViewportChangeEnd() {
+  const vp = viewport.value
+  if (vp && typeof vp.x === 'number' && typeof vp.y === 'number' && typeof vp.zoom === 'number') {
+    workflowStore.setConfiguration({ viewport: { x: vp.x, y: vp.y, zoom: vp.zoom } })
+  }
+}
+
+onMounted(() => {
+  nextTick(hydrateFromStore)
+})
 
 const nodeTypes = {
   default: markRaw(WorkflowNode),
@@ -38,10 +82,12 @@ const nodeTypes = {
 
 function onNodesChange(changes: NodeChange[]) {
   applyNodeChanges(changes)
+  nextTick(persistToStore)
 }
 
 function onEdgesChange(changes: EdgeChange[]) {
   applyEdgeChanges(changes)
+  nextTick(persistToStore)
 }
 
 function onConnect(connection: Connection) {
@@ -159,6 +205,7 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
       fit-view-on-init
       @nodes-change="onNodesChange"
       @edges-change="onEdgesChange"
+      @viewport-change-end="onViewportChangeEnd"
       @connect="onConnect"
       @drop="onDrop"
       @dragover="onDragOver"
