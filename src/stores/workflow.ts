@@ -117,10 +117,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function updateNodeData(nodeId: string, data: Record<string, unknown>) {
+    console.log('Updating node data:', nodeId, data)
     const node = nodes.value.find((n) => n.id === nodeId)
     if (node) {
       node.data = { ...(node.data ?? {}), ...data }
     }
+    console.log('Updated node data:', nodes)
   }
 
   return {

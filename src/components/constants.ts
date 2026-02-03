@@ -23,32 +23,32 @@ export const triggerNode = [
             required: true,
             default: {
               label: 'Every minute',
-              value: '* * * * *',
+              value: 'min',
             },
             options: [
               {
                 label: 'Every second',
-                value: '* * * * * *',
+                value: 'sec',
               },
               {
                 label: 'Every minute',
-                value: '* * * * *',
+                value: 'min',
               },
               {
                 label: 'Every hour',
-                value: '0 * * * *',
+                value: 'hour',
               },
               {
                 label: 'Every day',
-                value: '0 0 * * *',
+                value: 'day',
               },
               {
                 label: 'Every week',
-                value: '0 0 * * 0',
+                value: 'week',
               },
               {
                 label: 'Every month',
-                value: '0 0 1 * *',
+                value: 'month',
               }
             ],
           },

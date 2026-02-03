@@ -61,7 +61,7 @@ function getDefaultValue(field: ConfigField): unknown {
   return d ?? (field.type === 'number' ? 0 : '')
 }
 
-function initFormState() {
+function initFormState() {debugger
   const state: Record<string, unknown> = {}
   const saved = isTemplate.value
     ? workflowStore.getTemplateConfig(templateName.value)
@@ -81,12 +81,63 @@ watch(
   { immediate: true }
 )
 
+/** For " between trigger" number field: show selected option value from previous select before the label (e.g. "min between trigger"). */
+function getFieldLabel(field: ConfigField, index: number): string {
+  if (field.type === 'number' && field.label === ' between trigger' && index > 0) {
+    const prev = configFields.value[index - 1]
+    if (prev?.type === 'select' && prev.options?.length) {
+      const selectedValue = formState.value[prev.label]
+      const valueStr = selectedValue != null ? String(selectedValue) : prev.options[0]?.value ?? ''
+      return valueStr + field.label
+    }
+  }
+  return field.label
+}
+
+/** Show Apply button when modal has a template or workflow node (even if no config fields). */
+const showApplySection = computed(() => (isTemplate.value && templateData.value) || !!workflowData.value)
+
 function onApply() {
-  if (!hasConfigForm.value) return
+  debugger
+  const config = { ...formState.value }
+  const name = templateName.value
+
   if (isTemplate.value && templateData.value) {
-    workflowStore.setTemplateConfig(templateData.value.name, { ...formState.value })
+    // Apply from list (template): save config, then add or update node in Vue Flow
+    workflowStore.setTemplateConfig(name, config)
+    const existing = workflowStore.nodes.find((n) => (n.label ?? n.data?.label) === name)
+    if (existing) {
+      workflowStore.updateNodeData(existing.id, config)
+      flowStore?.updateNodeData(existing.id, config)
+    } else {
+      // Not in Vue Flow: add new node with full configuration
+      const isTrigger = triggerNode.some((n) => n.name === name)
+      const data = { label: name, isTrigger, ...config }
+      const nodes = flowStore?.getNodes?.value ?? []
+      let x = 100
+      let y = 100
+      if (nodes.length > 0) {
+        let maxX = -Infinity
+        let maxY = -Infinity
+        nodes.forEach((n: { position: { x: number; y: number } }) => {
+          if (n.position.x > maxX) maxX = n.position.x
+          if (n.position.y > maxY) maxY = n.position.y
+        })
+        x = maxX + 220
+        y = maxY
+      }
+      flowStore?.addNodes?.({
+        id: `node-${Date.now()}`,
+        type: 'workflow',
+        position: { x, y },
+        label: name,
+        data,
+      })
+      console.log('Nodes:', useWorkflowStore().nodes)
+    }
   } else if (workflowData.value) {
-    const data = { ...formState.value }
+    // Apply from canvas (Open): update current node
+    const data = { ...workflowData.value.data, ...config }
     workflowStore.updateNodeData(workflowData.value.id, data)
     flowStore?.updateNodeData(workflowData.value.id, data)
   }
@@ -153,17 +204,18 @@ function onApply() {
             </ul>
           </template>
 
-          <!-- Config form (template or workflow node with configuration) -->
-          <template v-if="hasConfigForm">
-            <h3 class="node-modal__section-title">Configuration</h3>
+          <!-- Config form and Apply (template or workflow node; show Apply even when no config fields) -->
+          <template v-if="showApplySection">
             <form class="node-modal__form" @submit.prevent="onApply">
-              <div
-                v-for="(field, idx) in configFields"
-                :key="idx"
-                class="node-modal__field"
-              >
+              <template v-if="hasConfigForm">
+                <h3 class="node-modal__section-title">Configuration</h3>
+                <div
+                  v-for="(field, idx) in configFields"
+                  :key="idx"
+                  class="node-modal__field"
+                >
                 <label :for="`node-modal-field-${idx}`" class="node-modal__label">
-                  {{ field.label }}
+                  {{ getFieldLabel(field, idx) }}
                   <span v-if="field.required" class="node-modal__required">*</span>
                 </label>
                 <p v-if="field.description" class="node-modal__field-desc">{{ field.description }}</p>
@@ -233,6 +285,7 @@ function onApply() {
                   :required="field.required"
                 />
               </div>
+              </template>
               <footer class="node-modal__footer">
                 <button type="submit" class="node-modal__apply">
                   Apply
