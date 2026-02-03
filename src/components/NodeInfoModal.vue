@@ -4,7 +4,7 @@ import { useNodeModalStore } from '../stores/nodeModal'
 import type { ConfigField } from '../stores/nodeModal'
 import { useWorkflowStore } from '../stores/workflow'
 import { useVueFlow } from '@vue-flow/core'
-import { triggerNode, supportedNodeList } from './constants'
+import { triggerNode, supportedNodeList, nodeActionType } from './constants'
 
 const modalStore = useNodeModalStore()
 const workflowStore = useWorkflowStore()
@@ -61,7 +61,7 @@ function getDefaultValue(field: ConfigField): unknown {
   return d ?? (field.type === 'number' ? 0 : '')
 }
 
-function initFormState() {debugger
+function initFormState() {
   const state: Record<string, unknown> = {}
   const saved = isTemplate.value
     ? workflowStore.getTemplateConfig(templateName.value)
@@ -98,9 +98,44 @@ function getFieldLabel(field: ConfigField, index: number): string {
 const showApplySection = computed(() => (isTemplate.value && templateData.value) || !!workflowData.value)
 
 function onApply() {
-  debugger
   const config = { ...formState.value }
   const name = templateName.value
+
+  const template =
+    triggerNode.find((n) => n.name === name) ??
+    supportedNodeList.find((n) => n.name === name)
+  const actionType =
+    (template?.type as string | undefined) ||
+    (workflowData.value?.data?.actionType as string | undefined) ||
+    ''
+
+  if (actionType) {
+    let executableCode = ''
+    if (actionType === nodeActionType.RUN_CODE) {
+      executableCode = String(config['JavaScript Code'] ?? '')
+    } else if (actionType === nodeActionType.API_CALL) {
+      const url = String(config['URL'] ?? '')
+      const method = String(config['Method'] ?? 'GET')
+      const headersRaw = String(config['Headers'] ?? '')
+      const bodyRaw = String(config['Body'] ?? '')
+      let headersObj: Record<string, string> = {}
+      try {
+        headersObj = headersRaw ? JSON.parse(headersRaw) : {}
+      } catch {
+        headersObj = {}
+      }
+      const headersJson = JSON.stringify(headersObj)
+      const bodyExpr = bodyRaw ? JSON.stringify(bodyRaw) : 'undefined'
+      executableCode = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(method)}, headers: ${headersJson}, body: ${bodyExpr} })`
+    } else if (actionType === nodeActionType.COMPUTATION) {
+      executableCode = String(config['Expression Code'] ?? '')
+    }
+
+    config.actionType = actionType
+    if (executableCode) {
+      config[actionType] = executableCode
+    }
+  }
 
   if (isTemplate.value && templateData.value) {
     // Apply from list (template): save config, then add or update node in Vue Flow
@@ -133,7 +168,6 @@ function onApply() {
         label: name,
         data,
       })
-      console.log('Nodes:', useWorkflowStore().nodes)
     }
   } else if (workflowData.value) {
     // Apply from canvas (Open): update current node

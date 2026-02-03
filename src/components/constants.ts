@@ -1,7 +1,14 @@
+export const nodeActionType = {
+  COMPUTATION: 'computation',
+  API_CALL: 'api_call',
+  RUN_CODE: 'run_code',
+  SCHEDULE_TRIGGER: 'schedule_trigger',
+  MANUAL_TRIGGER: 'manual_trigger',
+}
 export const triggerNode = [
     {
         name: 'Manual Trigger',
-        type: 'trigger',
+        type: nodeActionType.MANUAL_TRIGGER,
         icon: '',
         url: '',
         description:
@@ -10,7 +17,7 @@ export const triggerNode = [
       },
       {
         name: 'Schedule Trigger',
-        type: 'trigger',
+        type: nodeActionType.SCHEDULE_TRIGGER,
         icon: '',
         url: '',
         description:
@@ -74,7 +81,7 @@ export const triggerNode = [
 export const supportedNodeList = [
   {
     name: 'Run Code',
-    type: 'nodes',
+    type: nodeActionType.RUN_CODE,
     icon: '',
     url: '',
     description:
@@ -92,7 +99,7 @@ export const supportedNodeList = [
   },  
   {
     name: 'API Call',
-    type: 'nodes',
+    type: nodeActionType.API_CALL,
     icon: '',
     url: '',
     description:
@@ -138,7 +145,7 @@ export const supportedNodeList = [
   },
   {
     name: 'Computation',
-    type: 'nodes',
+    type: nodeActionType.COMPUTATION,
     icon: '',
     url: '',
     description:

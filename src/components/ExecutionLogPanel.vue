@@ -82,6 +82,9 @@ function formatValue(v: unknown): string {
         </button>
       </header>
       <template v-if="logStore.execution">
+        <div v-if="logStore.execution.executedAtFormatted" class="execution-log__time">
+          Executed at {{ logStore.execution.executedAtFormatted }}
+        </div>
         <div class="execution-log__summary">
           Success in {{ logStore.execution.durationMs }}ms
         </div>
@@ -284,6 +287,12 @@ function formatValue(v: unknown): string {
 .execution-log__clear svg {
   flex-shrink: 0;
   fill: currentColor;
+}
+
+.execution-log__time {
+  padding: 10px 12px 0;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 .execution-log__summary {

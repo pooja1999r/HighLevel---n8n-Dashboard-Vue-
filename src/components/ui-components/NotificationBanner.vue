@@ -1,21 +1,29 @@
 <template>
-  <Transition name="error-notification">
+  <Transition name="notification-banner">
     <div
       v-if="visible"
-      role="alert"
-      class="error-notification"
-      :class="{ 'error-notification--dismissible': dismissible }"
+      :role="type === 'error' ? 'alert' : 'status'"
+      class="notification-banner"
+      :class="[
+        `notification-banner--${type}`,
+        { 'notification-banner--dismissible': dismissible }
+      ]"
     >
-      <span class="error-notification__icon" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <span class="notification-banner__icon" aria-hidden="true">
+        <!-- Error icon -->
+        <svg v-if="type === 'error'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
         </svg>
+        <!-- Success icon (checkmark) -->
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+        </svg>
       </span>
-      <p class="error-notification__message">{{ message }}</p>
+      <p class="notification-banner__message">{{ message }}</p>
       <button
         v-if="dismissible"
         type="button"
-        class="error-notification__close"
+        class="notification-banner__close"
         aria-label="Dismiss"
         @click="dismiss"
       >
@@ -27,23 +35,28 @@
   </Transition>
 </template>
 
+<script lang="ts">
+export type NotificationType = 'error' | 'success'
+</script>
+
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
     message: string
+    type: 'error' | 'success'
     /** Whether the notification is shown. */
     modelValue?: boolean
     /** Allow user to dismiss via close button. */
     dismissible?: boolean
-    /** Auto-dismiss after this many ms. 0 = no auto-dismiss. */
+    /** Auto-dismiss after this many ms. Defaults to 5000ms. 0 = no auto-dismiss. */
     autoDismissMs?: number
   }>(),
   {
     modelValue: true,
     dismissible: true,
-    autoDismissMs: 0,
+    autoDismissMs: 5000,
   }
 )
 
@@ -59,11 +72,12 @@ watch(
   () => props.modelValue,
   (val) => {
     visible.value = val
-    if (val && props.autoDismissMs > 0) {
-      autoDismissTimer = setTimeout(dismiss, props.autoDismissMs)
-    } else if (autoDismissTimer) {
+    if (autoDismissTimer) {
       clearTimeout(autoDismissTimer)
       autoDismissTimer = null
+    }
+    if (val && props.autoDismissMs > 0) {
+      autoDismissTimer = setTimeout(dismiss, props.autoDismissMs)
     }
   },
   { immediate: true }
@@ -81,59 +95,76 @@ function dismiss() {
 </script>
 
 <style scoped>
-.error-notification {
+.notification-banner {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* Error variant */
+.notification-banner--error {
   background: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: 8px;
   color: #991b1b;
 }
 
-.error-notification__icon {
-  flex-shrink: 0;
-  margin-top: 2px;
+/* Success variant */
+.notification-banner--success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
 }
 
-.error-notification__icon svg {
+.notification-banner__icon {
+  flex-shrink: 0;
+}
+
+.notification-banner__icon svg {
   fill: currentColor;
 }
 
-.error-notification__message {
+.notification-banner__message {
   flex: 1;
   margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
+  font-weight: 500;
 }
 
-.error-notification__close {
+.notification-banner__close {
   flex-shrink: 0;
   padding: 4px;
   margin: -4px -4px -4px 0;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #991b1b;
+  color: inherit;
   cursor: pointer;
 }
 
-.error-notification__close:hover {
+.notification-banner--error .notification-banner__close:hover {
   background: #fee2e2;
 }
 
-.error-notification__close svg {
+.notification-banner--success .notification-banner__close:hover {
+  background: #dcfce7;
+}
+
+.notification-banner__close svg {
   fill: currentColor;
 }
 
-.error-notification-enter-active,
-.error-notification-leave-active {
+/* Transitions */
+.notification-banner-enter-active,
+.notification-banner-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.error-notification-enter-from,
-.error-notification-leave-to {
+.notification-banner-enter-from,
+.notification-banner-leave-to {
   opacity: 0;
   transform: translateY(-8px);
 }

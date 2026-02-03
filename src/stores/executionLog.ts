@@ -17,7 +17,16 @@ export interface Execution {
   durationMs: number
   status: 'success' | 'error'
   triggerDescription?: string
+  /** Formatted time when execution was run (e.g. "2:45:30 PM") */
+  executedAtFormatted?: string
   entries: ExecutionEntry[]
+}
+
+export type NotificationType = 'error' | 'success'
+
+export interface Notification {
+  type: NotificationType
+  message: string
 }
 
 export const useExecutionLogStore = defineStore('executionLog', () => {
@@ -25,6 +34,12 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
   const selectedEntryId = ref<string | null>(null)
   /** When false, only the bar is visible and body is not in DOM. */
   const isLogPanelOpen = ref(true)
+  /** Error message to show (e.g. "trigger node is required"). */
+  const errorMessage = ref<string | null>(null)
+  /** Show success banner after execution. */
+  const showSuccessBanner = ref(false)
+  /** Unified notification state */
+  const notification = ref<Notification | null>(null)
 
   const hasExecution = computed(() => execution.value != null)
   const entries = computed(() => execution.value?.entries ?? [])
@@ -45,6 +60,32 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
     selectedEntryId.value = null
   }
 
+  function setError(message: string) {
+    errorMessage.value = message
+  }
+
+  function clearError() {
+    errorMessage.value = null
+  }
+
+  function setSuccessBanner() {
+    showSuccessBanner.value = true
+  }
+
+  function clearSuccessBanner() {
+    showSuccessBanner.value = false
+  }
+
+  /** Set unified notification (error or success) */
+  function setNotification(type: NotificationType, message: string) {
+    notification.value = { type, message }
+  }
+
+  /** Clear unified notification */
+  function clearNotification() {
+    notification.value = null
+  }
+
   function setExecution(value: Execution) {
     execution.value = value
     selectedEntryId.value = value.entries[0]?.id ?? null
@@ -61,10 +102,19 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
     hasExecution,
     entries,
     selectedEntry,
+    errorMessage,
+    showSuccessBanner,
+    notification,
     setLogPanelOpen,
     toggleLogPanel,
     clearExecution,
     setExecution,
     setSelectedEntryId,
+    setError,
+    clearError,
+    setSuccessBanner,
+    clearSuccessBanner,
+    setNotification,
+    clearNotification,
   }
 })
