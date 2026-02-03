@@ -588,7 +588,6 @@ async function executeWorkflowNow() {
     startedAt,
     durationMs,
     status: hasError ? 'error' : 'success',
-    triggerDescription: "When clicking 'Execute workflow'",
     executedAtFormatted: formatExecutedTime(startedAt),
     entries,
   }
