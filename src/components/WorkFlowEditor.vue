@@ -283,6 +283,7 @@ function exportWorkflow() {
   const nodesToExport = workflowStore.nodes.map(node => ({
     id: node.id,
     label: node.label,
+    position: node.position, // Include exact position
     data: node.data,
   }))
   
@@ -362,7 +363,7 @@ async function handleImport(event: Event) {
     }
     
     // Determine format: new format { nodes: [], edges: [] } or old format (array of nodes)
-    let nodesToImport: Array<{ id?: string; label: string; data: Record<string, unknown> }> = []
+    let nodesToImport: Array<{ id?: string; label: string; position?: { x: number; y: number }; data: Record<string, unknown> }> = []
     let edgesToImport: Array<{ source: string; target: string }> = []
     
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -399,7 +400,10 @@ async function handleImport(event: Event) {
     let addedCount = 0
     
     for (const nodeData of nodesToImport) {
-      const position = (nodeData.data.position as { x: number; y: number }) ?? { x: startX, y: startY }
+      // Use top-level position first, then fallback to data.position, then default
+      const position = nodeData.position 
+        ?? (nodeData.data.position as { x: number; y: number } | undefined) 
+        ?? { x: startX, y: startY }
       const oldId = nodeData.id ?? `temp-${addedCount}`
       const newId = `node-${Date.now()}-${addedCount}`
       

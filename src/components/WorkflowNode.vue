@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
-import { triggerNode } from './constants'
+import { triggerNode, nodeIcons } from './constants'
 
 const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
 
-const props = defineProps<NodeProps<{ label?: string; isTrigger?: boolean; muted?: boolean }>>()
+const props = defineProps<NodeProps<{ label?: string; isTrigger?: boolean; muted?: boolean; actionType?: string }>>()
 
 /** Trigger nodes have only a lower edge (output); they cannot have incoming connections. */
 const isTriggerNode = computed(() => {
@@ -35,6 +35,15 @@ const showActions = ref(false)
 const labelText = computed(() => {
   const l = props.label ?? props.data?.label
   return typeof l === 'string' ? l : 'Node'
+})
+
+/** Get the icon path for this node based on actionType */
+const nodeIcon = computed(() => {
+  const actionType = props.data?.actionType as string | undefined
+  if (actionType && nodeIcons[actionType]) {
+    return nodeIcons[actionType]
+  }
+  return null
 })
 
 function stopPropagation(e: Event) {
@@ -119,7 +128,12 @@ function run(fn: keyof Handlers) {
       </template>
 
       <div class="workflow-node__body" :class="{ 'workflow-node__body--muted': isMuted }">
-        <span class="workflow-node__label">{{ labelText }}</span>
+        <div class="workflow-node__content">
+          <svg v-if="nodeIcon" class="workflow-node__icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path :d="nodeIcon" />
+          </svg>
+          <span class="workflow-node__label">{{ labelText }}</span>
+        </div>
         <span v-if="isMuted" class="workflow-node__muted-badge">Disabled</span>
       </div>
     </div>
@@ -155,10 +169,20 @@ function run(fn: keyof Handlers) {
   position: relative;
 }
 
+.workflow-node__content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workflow-node__icon {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
 .workflow-node__label {
   font-size: 13px;
   color: #334155;
-  display: block;
 }
 
 .workflow-node__actions {

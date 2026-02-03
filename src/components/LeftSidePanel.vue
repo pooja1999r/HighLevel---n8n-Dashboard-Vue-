@@ -36,7 +36,6 @@ const handleItemClick = (item: string) => {
       name: template.name,
       description: template.description,
       icon: template.icon,
-      url: template.url,
       configuration: template.configuration as Parameters<typeof nodeModalStore.openTemplate>[0]['configuration'],
     })
   }

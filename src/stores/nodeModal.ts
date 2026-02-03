@@ -31,7 +31,6 @@ export interface TemplateNodeInfo {
   name: string
   description?: string
   icon?: string
-  url?: string
   actions?: Array<{ name: string; description?: string }>
   configuration?: ConfigField[]
 }
