@@ -8,7 +8,7 @@ export interface ExecutionEntry {
   input?: unknown
   output?: unknown
   durationMs: number
-  status: 'success' | 'error'
+  status: 'success' | 'error' | 'skipped'
 }
 
 export interface Execution {

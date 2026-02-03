@@ -5,7 +5,7 @@ import { triggerNode } from './constants'
 
 const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
 
-const props = defineProps<NodeProps<{ label?: string; isTrigger?: boolean }>>()
+const props = defineProps<NodeProps<{ label?: string; isTrigger?: boolean; muted?: boolean }>>()
 
 /** Trigger nodes have only a lower edge (output); they cannot have incoming connections. */
 const isTriggerNode = computed(() => {
@@ -13,6 +13,9 @@ const isTriggerNode = computed(() => {
   const label = props.label ?? props.data?.label
   return typeof label === 'string' && triggerNode.some((t) => t.name === label)
 })
+
+/** Whether this node is muted (will not execute in workflow run) */
+const isMuted = computed(() => props.data?.muted === true)
 
 type Handlers = {
   onExecute: (id: string) => void
@@ -69,13 +72,18 @@ function run(fn: keyof Handlers) {
           </svg>
         </button>
         <button
+          v-if="!isTriggerNode"
           type="button"
           class="workflow-node__btn workflow-node__btn--switch"
-          title="Switch off"
+          :class="{ 'workflow-node__btn--muted': isMuted }"
+          :title="isMuted ? 'Enable node' : 'Disable node'"
           @click="run('onSwitchOff')"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+          <svg v-if="!isMuted" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42A6.92 6.92 0 0119 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.05.88-3.89 2.29-5.17L5.88 5.41A8.96 8.96 0 003 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.65-1.15-5.03-2.97-6.68l-.2-.15z" />
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.902 7.902 0 014 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1A7.902 7.902 0 0120 12c0 4.42-3.58 8-8 8z" />
           </svg>
         </button>
         <button
@@ -103,15 +111,16 @@ function run(fn: keyof Handlers) {
           <div v-show="showMenu" class="workflow-node__dropdown" @click="showMenu = false">
             <button type="button" class="workflow-node__dropdown-item" @click="run('onOpen')">Open</button>
             <button type="button" class="workflow-node__dropdown-item" @click="run('onRename')">Rename</button>
-            <button type="button" class="workflow-node__dropdown-item" @click="run('onCopy')">Copy</button>
-            <button type="button" class="workflow-node__dropdown-item" @click="run('onDuplicate')">Duplicate</button>
+            <button v-if="!isTriggerNode" type="button" class="workflow-node__dropdown-item" @click="run('onCopy')">Copy</button>
+            <button v-if="!isTriggerNode" type="button" class="workflow-node__dropdown-item" @click="run('onDuplicate')">Duplicate</button>
           </div>
         </div>
         </div>
       </template>
 
-      <div class="workflow-node__body">
+      <div class="workflow-node__body" :class="{ 'workflow-node__body--muted': isMuted }">
         <span class="workflow-node__label">{{ labelText }}</span>
+        <span v-if="isMuted" class="workflow-node__muted-badge">Disabled</span>
       </div>
     </div>
   </div>
@@ -250,5 +259,29 @@ function run(fn: keyof Handlers) {
   height: 8px;
   background: #64748b;
   border: 2px solid #fff;
+}
+
+/* Muted node styles */
+.workflow-node__body--muted {
+  opacity: 0.5;
+}
+
+.workflow-node__btn--muted {
+  background: #fef3c7;
+}
+
+.workflow-node__btn--muted:hover {
+  background: #fde68a;
+}
+
+.workflow-node__btn--muted svg {
+  fill: #d97706;
+}
+
+.workflow-node__muted-badge {
+  display: block;
+  font-size: 10px;
+  color: #d97706;
+  margin-top: 2px;
 }
 </style>

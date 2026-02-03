@@ -125,6 +125,16 @@ export const useWorkflowStore = defineStore('workflow', () => {
     console.log('Updated node data:', nodes)
   }
 
+  /** Update the label (name) of a node */
+  function updateNodeLabel(nodeId: string, label: string) {
+    const node = nodes.value.find((n) => n.id === nodeId)
+    if (node) {
+      node.label = label
+      // Also update the label in data for consistency
+      node.data = { ...(node.data ?? {}), label }
+    }
+  }
+
   return {
     nodes,
     edges,
@@ -149,5 +159,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     getTemplateConfig,
     setTemplateConfig,
     updateNodeData,
+    updateNodeLabel,
   }
 })

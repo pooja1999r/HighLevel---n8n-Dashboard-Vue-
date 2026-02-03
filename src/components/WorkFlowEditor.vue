@@ -146,98 +146,121 @@ function addNewNode(x: number, y: number, label: string, isTrigger = false, conf
   })
 }
 
-/** Tidy up nodes - arrange them in a clean layout based on connections */
+/** Tidy up nodes - arrange them in a clean tree layout based on connections */
 function tidyUp() {
   const currentNodes = getNodes.value
   const currentEdges = getEdges.value
   if (currentNodes.length === 0) return
 
   const NODE_WIDTH = 180
-  const NODE_HEIGHT = 80
-  const HORIZONTAL_GAP = 100
-  const VERTICAL_GAP = 60
+  const NODE_HEIGHT = 60
+  const HORIZONTAL_GAP = 80
+  const VERTICAL_GAP = 100
+  const TREE_GAP = 150 // Gap between separate trees
 
-  // Build adjacency list and find root nodes (no incoming edges)
-  const incomingCount = new Map<string, number>()
-  const outgoing = new Map<string, string[]>()
+  // Build adjacency lists
+  const children = new Map<string, string[]>()
+  const parents = new Map<string, string[]>()
   
   currentNodes.forEach(n => {
-    incomingCount.set(n.id, 0)
-    outgoing.set(n.id, [])
+    children.set(n.id, [])
+    parents.set(n.id, [])
   })
   
   currentEdges.forEach(e => {
-    incomingCount.set(e.target, (incomingCount.get(e.target) ?? 0) + 1)
-    const list = outgoing.get(e.source) ?? []
-    list.push(e.target)
-    outgoing.set(e.source, list)
-  })
-
-  // Find root nodes (triggers or nodes with no incoming edges)
-  const roots = currentNodes.filter(n => 
-    n.data?.isTrigger === true || incomingCount.get(n.id) === 0
-  )
-
-  // BFS to assign levels
-  const levels = new Map<string, number>()
-  const queue: { id: string; level: number }[] = roots.map(n => ({ id: n.id, level: 0 }))
-  const visited = new Set<string>()
-
-  while (queue.length > 0) {
-    const { id, level } = queue.shift()!
-    if (visited.has(id)) continue
-    visited.add(id)
-    levels.set(id, Math.max(levels.get(id) ?? 0, level))
-    
-    const children = outgoing.get(id) ?? []
-    children.forEach(childId => {
-      if (!visited.has(childId)) {
-        queue.push({ id: childId, level: level + 1 })
-      }
-    })
-  }
-
-  // Handle disconnected nodes
-  currentNodes.forEach(n => {
-    if (!levels.has(n.id)) {
-      levels.set(n.id, 0)
+    if (children.has(e.source) && parents.has(e.target)) {
+      children.get(e.source)!.push(e.target)
+      parents.get(e.target)!.push(e.source)
     }
   })
 
-  // Group nodes by level
-  const nodesByLevel = new Map<number, typeof currentNodes>()
-  currentNodes.forEach(n => {
-    const level = levels.get(n.id) ?? 0
-    const list = nodesByLevel.get(level) ?? []
-    list.push(n)
-    nodesByLevel.set(level, list)
-  })
+  // Find root nodes (triggers first, then nodes with no parents)
+  const triggers = currentNodes.filter(n => n.data?.isTrigger === true)
+  const noParentNodes = currentNodes.filter(n => 
+    parents.get(n.id)!.length === 0 && n.data?.isTrigger !== true
+  )
+  const roots = [...triggers, ...noParentNodes]
 
-  // Calculate positions
-  const maxLevel = Math.max(...Array.from(levels.values()))
-  const updates: { id: string; position: { x: number; y: number } }[] = []
+  // Track which nodes have been positioned
+  const positioned = new Set<string>()
+  const positions = new Map<string, { x: number; y: number }>()
 
-  for (let level = 0; level <= maxLevel; level++) {
-    const nodesAtLevel = nodesByLevel.get(level) ?? []
-    const totalWidth = nodesAtLevel.length * NODE_WIDTH + (nodesAtLevel.length - 1) * HORIZONTAL_GAP
-    const startX = -totalWidth / 2 + NODE_WIDTH / 2
+  // Calculate subtree width recursively
+  function getSubtreeWidth(nodeId: string, visited: Set<string>): number {
+    if (visited.has(nodeId)) return NODE_WIDTH
+    visited.add(nodeId)
+    
+    const nodeChildren = children.get(nodeId) ?? []
+    if (nodeChildren.length === 0) return NODE_WIDTH
+    
+    let totalWidth = 0
+    nodeChildren.forEach((childId, index) => {
+      if (index > 0) totalWidth += HORIZONTAL_GAP
+      totalWidth += getSubtreeWidth(childId, new Set(visited))
+    })
+    
+    return Math.max(NODE_WIDTH, totalWidth)
+  }
 
-    nodesAtLevel.forEach((node, index) => {
-      updates.push({
-        id: node.id,
-        position: {
-          x: startX + index * (NODE_WIDTH + HORIZONTAL_GAP),
-          y: level * (NODE_HEIGHT + VERTICAL_GAP) + 50,
-        },
-      })
+  // Position a subtree recursively
+  function positionSubtree(nodeId: string, centerX: number, y: number, visited: Set<string>) {
+    if (visited.has(nodeId) || positioned.has(nodeId)) return
+    visited.add(nodeId)
+    positioned.add(nodeId)
+    
+    // Position this node
+    positions.set(nodeId, { x: centerX - NODE_WIDTH / 2, y })
+    
+    const nodeChildren = children.get(nodeId) ?? []
+    if (nodeChildren.length === 0) return
+    
+    // Calculate total width needed for children
+    const childWidths: number[] = []
+    let totalChildrenWidth = 0
+    nodeChildren.forEach((childId, index) => {
+      const width = getSubtreeWidth(childId, new Set(visited))
+      childWidths.push(width)
+      if (index > 0) totalChildrenWidth += HORIZONTAL_GAP
+      totalChildrenWidth += width
+    })
+    
+    // Position children centered under this node
+    let currentX = centerX - totalChildrenWidth / 2
+    nodeChildren.forEach((childId, index) => {
+      const childWidth = childWidths[index]
+      const childCenterX = currentX + childWidth / 2
+      positionSubtree(childId, childCenterX, y + VERTICAL_GAP, new Set(visited))
+      currentX += childWidth + HORIZONTAL_GAP
     })
   }
 
-  // Apply position updates
-  updates.forEach(({ id, position }) => {
-    const node = currentNodes.find(n => n.id === id)
-    if (node) {
-      node.position = position
+  // Position each tree starting from roots
+  let treeStartX = 0
+  roots.forEach((root, treeIndex) => {
+    if (positioned.has(root.id)) return
+    
+    const treeWidth = getSubtreeWidth(root.id, new Set())
+    const treeCenterX = treeStartX + treeWidth / 2
+    
+    positionSubtree(root.id, treeCenterX, 50, new Set())
+    
+    treeStartX += treeWidth + TREE_GAP
+  })
+
+  // Handle any remaining disconnected nodes (shouldn't happen but just in case)
+  let disconnectedX = treeStartX
+  currentNodes.forEach(n => {
+    if (!positioned.has(n.id)) {
+      positions.set(n.id, { x: disconnectedX, y: 50 })
+      disconnectedX += NODE_WIDTH + HORIZONTAL_GAP
+    }
+  })
+
+  // Apply positions to nodes
+  currentNodes.forEach(node => {
+    const pos = positions.get(node.id)
+    if (pos) {
+      node.position = pos
     }
   })
 
@@ -338,6 +361,21 @@ async function executeWorkflowNow() {
   for (const node of order) {
     const workflowNode = nodesById.get(node.id)
     const config = workflowNode?.data ?? {}
+    
+    // Skip muted nodes
+    if (config.muted === true) {
+      entries.push({
+        id: `entry-${node.id}-${startedAt}`,
+        nodeId: node.id,
+        nodeName: node.label,
+        input: config,
+        output: { skipped: true, reason: 'Node is disabled' },
+        durationMs: 0,
+        status: 'skipped' as const,
+      })
+      continue
+    }
+    
     const nodeStartedAt = Date.now()
     const execResult = workflowNode
       ? await executeNode(config)
@@ -470,7 +508,13 @@ async function runWorkflow() {
 onUnmounted(clearSchedule)
 
 function onNodeSwitchOff(id: string) {
-  console.log('Switch off node:', id)
+  const node = workflowStore.nodes.find((n) => n.id === id)
+  if (!node) return
+  const currentMuted = node.data?.muted === true
+  // Toggle muted state
+  workflowStore.updateNodeData(id, { muted: !currentMuted })
+  updateNodeData(id, { muted: !currentMuted })
+  nextTick(persistToStore)
 }
 
 function onNodeDelete(id: string) {
@@ -483,30 +527,55 @@ function onNodeOpen(id: string) {
 }
 
 function onNodeRename(id: string) {
-  const name = window.prompt('Rename node')
+  const node = workflowStore.nodes.find((n) => n.id === id)
+  const currentName = node?.label ?? (node?.data?.label as string) ?? 'Node'
+  const name = window.prompt('Rename node', currentName)
   if (name != null && name.trim()) {
-    updateNodeData(id, { label: name.trim() })
+    const newName = name.trim()
+    // Update workflow store label
+    workflowStore.updateNodeLabel(id, newName)
+    // Update Vue Flow node - both label and data.label
+    const flowNode = getNodes.value.find((n) => n.id === id)
+    if (flowNode) {
+      flowNode.label = newName
+      flowNode.data = { ...flowNode.data, label: newName }
+    }
+    // Trigger reactivity by setting nodes
+    setFlowNodes([...getNodes.value])
+    nextTick(persistToStore)
   }
 }
 
-function onNodeCopy(id: string) {
-  const node = flowStore.findNode(id)
+async function onNodeCopy(id: string) {
+  const node = workflowStore.nodes.find((n) => n.id === id)
   if (!node) return
-  const pos = node.position
-  const label = (node.data?.label as string) ?? (node.label as string) ?? 'Node'
-  const isTrigger = (node.data?.isTrigger as boolean) ?? false
-  const { label: _l, isTrigger: _t, ...config } = (node.data ?? {}) as Record<string, unknown>
-  addNewNode(pos.x + 180, pos.y + 100, `Copy of ${label}`, isTrigger, config)
+  
+  // Copy node data to clipboard
+  const nodeData = {
+    label: node.label,
+    data: node.data,
+  }
+  
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(nodeData, null, 2))
+    executionLogStore.setNotification('success', 'Node data copied to clipboard')
+  } catch (err) {
+    console.error('Failed to copy:', err)
+    executionLogStore.setNotification('error', 'Failed to copy node data')
+  }
 }
 
 function onNodeDuplicate(id: string) {
   const node = flowStore.findNode(id)
   if (!node) return
+  
   const pos = node.position
   const label = (node.data?.label as string) ?? (node.label as string) ?? 'Node'
   const isTrigger = (node.data?.isTrigger as boolean) ?? false
-  const { label: _l, isTrigger: _t, ...config } = (node.data ?? {}) as Record<string, unknown>
-  addNewNode(pos.x + 200, pos.y, label, isTrigger, config)
+  // Copy all data except muted state for fresh duplicate
+  const { label: _l, isTrigger: _t, muted: _m, ...config } = (node.data ?? {}) as Record<string, unknown>
+  
+  addNewNode(pos.x + 50, pos.y + 80, label, isTrigger, config)
 }
 
 provide(WORKFLOW_NODE_HANDLERS_KEY, {

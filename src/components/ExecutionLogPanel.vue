@@ -83,8 +83,14 @@ function formatValue(v: unknown): string {
         <div v-if="logStore.execution.executedAtFormatted" class="execution-log__time">
           Executed at {{ logStore.execution.executedAtFormatted }}
         </div>
-        <div class="execution-log__summary">
-          Success in {{ logStore.execution.durationMs }}ms
+        <div 
+          class="execution-log__summary"
+          :class="{
+            'execution-log__summary--success': logStore.execution.status === 'success',
+            'execution-log__summary--error': logStore.execution.status === 'error'
+          }"
+        >
+          {{ logStore.execution.status === 'success' ? 'Success' : 'Error' }} in {{ logStore.execution.durationMs }}ms
         </div>
         <div v-if="logStore.execution.triggerDescription" class="execution-log__trigger">
           {{ logStore.execution.triggerDescription }}
@@ -94,11 +100,18 @@ function formatValue(v: unknown): string {
             v-for="entry in logStore.entries"
             :key="entry.id"
             class="execution-log__item"
-            :class="{ 'execution-log__item--active': entry.id === logStore.selectedEntryId }"
+            :class="{ 
+              'execution-log__item--active': entry.id === logStore.selectedEntryId,
+              'execution-log__item--success': entry.status === 'success',
+              'execution-log__item--error': entry.status === 'error',
+              'execution-log__item--skipped': entry.status === 'skipped'
+            }"
             @click="logStore.setSelectedEntryId(entry.id)"
           >
+            <span class="execution-log__item-status" aria-hidden="true"></span>
             <span class="execution-log__item-icon" aria-hidden="true">{}</span>
             <span class="execution-log__item-name">{{ entry.nodeName }}</span>
+            <span v-if="entry.status === 'skipped'" class="execution-log__item-badge">Disabled</span>
           </li>
         </ul>
       </template>
@@ -114,8 +127,23 @@ function formatValue(v: unknown): string {
             <span class="execution-log__detail-icon">{}</span>
             {{ logStore.selectedEntry.nodeName }}
           </h3>
-          <span class="execution-log__detail-status">
-            Success in {{ logStore.selectedEntry.durationMs }}ms
+          <span 
+            class="execution-log__detail-status"
+            :class="{
+              'execution-log__detail-status--success': logStore.selectedEntry.status === 'success',
+              'execution-log__detail-status--error': logStore.selectedEntry.status === 'error',
+              'execution-log__detail-status--skipped': logStore.selectedEntry.status === 'skipped'
+            }"
+          >
+            <template v-if="logStore.selectedEntry.status === 'success'">
+              Success in {{ logStore.selectedEntry.durationMs }}ms
+            </template>
+            <template v-else-if="logStore.selectedEntry.status === 'error'">
+              Error in {{ logStore.selectedEntry.durationMs }}ms
+            </template>
+            <template v-else-if="logStore.selectedEntry.status === 'skipped'">
+              Skipped (disabled)
+            </template>
           </span>
         </header>
         <div class="execution-log__content">
@@ -335,6 +363,47 @@ function formatValue(v: unknown): string {
   white-space: nowrap;
 }
 
+.execution-log__item-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.execution-log__item--success .execution-log__item-status {
+  background: #86efac;
+}
+
+.execution-log__item--error .execution-log__item-status {
+  background: #fca5a5;
+}
+
+.execution-log__item--skipped .execution-log__item-status {
+  background: #fcd34d;
+}
+
+.execution-log__item--skipped {
+  opacity: 0.7;
+}
+
+.execution-log__item-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: #fef3c7;
+  color: #d97706;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.execution-log__summary--success {
+  color: #86efac;
+}
+
+.execution-log__summary--error {
+  color: #fca5a5;
+}
+
 .execution-log__empty {
   flex: 1;
   padding: 16px 12px;
@@ -376,6 +445,18 @@ function formatValue(v: unknown): string {
 .execution-log__detail-status {
   font-size: 12px;
   color: #86efac;
+}
+
+.execution-log__detail-status--success {
+  color: #86efac;
+}
+
+.execution-log__detail-status--error {
+  color: #fca5a5;
+}
+
+.execution-log__detail-status--skipped {
+  color: #fcd34d;
 }
 
 .execution-log__detail-tabs {
