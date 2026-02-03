@@ -122,7 +122,7 @@ export const supportedNodeList = [
         label: 'URL',
         description: 'The URL to call.',
         required: true,
-        default: 'https://api.example.com',
+        default: 'https://jsonplaceholder.typicode.com/todos/1',
       },
       {
         type: 'code',

@@ -1,8 +1,28 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useExecutionLogStore } from '../stores/executionLog'
 import type { ExecutionEntry } from '../stores/executionLog'
 
 const logStore = useExecutionLogStore()
+
+/** Check if the selected entry is an API call */
+const isApiCall = computed(() => {
+  const entry = logStore.selectedEntry
+  if (!entry) return false
+  const input = entry.input as Record<string, unknown> | undefined
+  return input?.actionType === 'api_call'
+})
+
+/** Get formatted JSON output for API calls */
+const jsonOutput = computed(() => {
+  const entry = logStore.selectedEntry
+  if (!entry?.output) return '{}'
+  try {
+    return JSON.stringify(entry.output, null, 2)
+  } catch {
+    return String(entry.output)
+  }
+})
 
 /** Flatten output to key-value rows for table. If output is a plain object, one row per key. */
 function outputRows(entry: ExecutionEntry | null): { key: string; value: string }[] {
@@ -148,9 +168,17 @@ function formatValue(v: unknown): string {
         <div class="execution-log__content">
           <div class="execution-log__content-header">
             <span class="execution-log__content-title">OUTPUT</span>
-            <span class="execution-log__content-meta">{{ outputRows(logStore.selectedEntry).length }} item(s)</span>
+            <span v-if="isApiCall" class="execution-log__content-meta execution-log__content-meta--json">JSON</span>
+            <span v-else class="execution-log__content-meta">{{ outputRows(logStore.selectedEntry).length }} item(s)</span>
           </div>
-          <div class="execution-log__table-wrap">
+          
+          <!-- JSON output for API calls -->
+          <div v-if="isApiCall" class="execution-log__json-wrap">
+            <pre class="execution-log__json">{{ jsonOutput }}</pre>
+          </div>
+          
+          <!-- Table output for other node types -->
+          <div v-else class="execution-log__table-wrap">
             <table class="execution-log__table">
               <thead>
                 <tr>
@@ -548,5 +576,33 @@ function formatValue(v: unknown): string {
   padding: 24px;
   font-size: 13px;
   color: #64748b;
+}
+
+/* JSON output styles */
+.execution-log__content-meta--json {
+  padding: 2px 8px;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.execution-log__json-wrap {
+  overflow: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  max-height: 300px;
+}
+
+.execution-log__json {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a5f3fc;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>
