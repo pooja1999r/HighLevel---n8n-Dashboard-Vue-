@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useNodeModalStore } from '../stores/nodeModal'
-import type { ConfigField } from '../stores/nodeModal'
-import { useWorkflowStore } from '../stores/workflow'
+import { useNodeModalStore } from '../../stores/nodeModal'
+import type { ConfigField } from '../../stores/nodeModal'
+import { useWorkflowStore } from '../../stores/workflow'
 import { useVueFlow } from '@vue-flow/core'
-import { triggerNode, supportedNodeList } from './constants' // Used in template
+import { triggerNode, supportedNodeList } from '../constants' // Used in template
 import {
   findTemplateByName,
   getFieldKey as getFieldKeyFromService,
@@ -12,7 +12,7 @@ import {
   generateExecutableCode,
   isTriggerNode,
   getConfigurationFields,
-} from '../services/nodeService'
+} from '../../services/nodeService'
 
 const modalStore = useNodeModalStore()
 const workflowStore = useWorkflowStore()

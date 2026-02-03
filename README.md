@@ -62,9 +62,12 @@ src/
 │   ├── WorkFlowEditor.vue      # Main canvas with Vue Flow integration
 │   ├── WorkflowNode.vue        # Custom node component with actions
 │   ├── LeftSidePanel.vue       # Node palette (drag source)
-│   ├── NodeInfoModal.vue       # Node configuration modal
 │   ├── ExecutionLogPanel.vue   # Execution history and logs
 │   ├── constants.ts            # Node type definitions and configurations
+│   │
+│   ├── modal/
+│   │   ├── NodeInfoModal.vue   # Node configuration modal
+│   │   └── ConfirmModal.vue    # Reusable confirmation/prompt modal
 │   │
 │   └── ui-components/
 │       ├── NotificationBanner.vue  # Success/error notifications

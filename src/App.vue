@@ -2,7 +2,7 @@
 import LeftSidePanel from './components/LeftSidePanel.vue'
 import WorkFlowEditor from './components/WorkFlowEditor.vue'
 import ExecutionLogPanel from './components/ExecutionLogPanel.vue'
-import NodeInfoModal from './components/NodeInfoModal.vue'
+import NodeInfoModal from './components/modal/NodeInfoModal.vue'
 import { useExecutionLogStore } from './stores/executionLog'
 
 const executionLogStore = useExecutionLogStore()
