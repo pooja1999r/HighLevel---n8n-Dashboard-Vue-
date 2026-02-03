@@ -98,13 +98,14 @@ export const supportedNodeList = [
       'Run custom code logic directly within the workflow when this node is executed.',
     configuration: [
       {
-        type: 'textarea',
+        type: 'code',
         labelType: 'JAVASCRIPT_CODE',
         label: 'JavaScript Code',
         description: 'The JavaScript code to run.',
         required: true,
         default: 'console.log("Hello, world!")',
         language: 'javascript',
+        rows: 8,
       }
     ]
   },  
@@ -124,12 +125,13 @@ export const supportedNodeList = [
         default: 'https://api.example.com',
       },
       {
-        type: 'text',
+        type: 'code',
         labelType: 'HEADERS',
         label: 'Headers',
-        description: 'The headers of the request.',
+        description: 'The headers of the request (JSON format).',
         required: false,
-        default: '',
+        default: '{}',
+        language: 'json',
       },
       {
         type: 'select',
@@ -147,13 +149,14 @@ export const supportedNodeList = [
         ],
       },
       {
-        type: 'textarea',
+        type: 'code',
         labelType: 'BODY',
         label: 'Body',
-        description: 'The body of the request.',
+        description: 'The body of the request (JSON format).',
         required: false,
-        default: '',
+        default: '{}',
         language: 'json',
+        rows: 5,
       }
     ],
   },
@@ -165,10 +168,10 @@ export const supportedNodeList = [
       'Perform mathematical calculations, string manipulations, or other data transformations.',
     configuration: [
       {
-        type: 'text',
+        type: 'expression',
         labelType: 'EXPRESSION_CODE',
-        label: 'Expression Code',
-        description: 'The expression to evaluate.',
+        label: 'Expression',
+        description: 'Mathematical expression (numbers and operators: + - * / % ** ( ) . )',
         required: true,
         default: '1 + 1',
       }

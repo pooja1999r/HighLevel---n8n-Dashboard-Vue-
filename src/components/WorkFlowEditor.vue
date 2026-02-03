@@ -746,6 +746,11 @@ function onNodeOpen(id: string) {
   if (node) nodeModalStore.openWorkflow(node)
 }
 
+/** Handle node click - open the node info modal */
+function onNodeClick({ node }: { node: { id: string } }) {
+  onNodeOpen(node.id)
+}
+
 function onNodeRename(id: string) {
   const node = workflowStore.nodes.find((n) => n.id === id)
   const currentName = node?.label ?? (node?.data?.label as string) ?? 'Node'
@@ -827,6 +832,7 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
       @connect="onConnect"
       @drop="onDrop"
       @dragover="onDragOver"
+      @node-click="onNodeClick"
     >
       <Panel position="top-right" class="workflow-controls">
         <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip" data-tooltip="Zoom to fit" @click="fitView({ padding: 0.2 })">

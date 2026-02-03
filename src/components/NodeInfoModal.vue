@@ -98,6 +98,58 @@ function getFieldLabel(field: ConfigField, index: number): string {
   return field.label
 }
 
+/** Validate expression input - only allow numbers and math operators */
+function validateExpression(event: Event) {
+  const input = event.target as HTMLInputElement
+  // Allow: numbers, operators (+ - * / % **), parentheses, dots, spaces
+  const validPattern = /^[\d\s+\-*/%().^]*$/
+  if (!validPattern.test(input.value)) {
+    // Remove invalid characters
+    input.value = input.value.replace(/[^\d\s+\-*/%().^]/g, '')
+  }
+}
+
+/** Check if current HTTP method is GET (to hide body field) */
+const isMethodGet = computed(() => {
+  const method = formState.value['METHOD']
+  return method === 'GET'
+})
+
+/** Check if a field should be visible based on conditions */
+function isFieldVisible(field: ConfigField): boolean {
+  const key = getFieldKey(field)
+  // Hide BODY field when method is GET
+  if (key === 'BODY' && isMethodGet.value) {
+    return false
+  }
+  return true
+}
+
+/** Track JSON validation errors */
+const jsonErrors = ref<Record<string, string>>({})
+
+/** Validate JSON input and update error state */
+function validateJson(field: ConfigField) {
+  const key = getFieldKey(field)
+  const value = formState.value[key]
+  
+  if (!value || String(value).trim() === '') {
+    // Empty is allowed (will use default)
+    delete jsonErrors.value[key]
+    return
+  }
+  
+  try {
+    JSON.parse(String(value))
+    delete jsonErrors.value[key]
+  } catch {
+    jsonErrors.value[key] = 'Invalid JSON format'
+  }
+}
+
+/** Check if there are any validation errors */
+const hasValidationErrors = computed(() => Object.keys(jsonErrors.value).length > 0)
+
 /** Show Apply button when modal has a payload. */
 const showApplySection = computed(() => !!modalStore.payload)
 
@@ -213,6 +265,7 @@ function onApply() {
                 <h3 class="node-modal__section-title">Configuration</h3>
                 <div
                   v-for="(field, idx) in configFields"
+                  v-show="isFieldVisible(field)"
                   :key="idx"
                   class="node-modal__field"
                 >
@@ -267,6 +320,52 @@ function onApply() {
                     {{ opt.label }}
                   </option>
                 </select>
+                <!-- code editor (JS/JSON) -->
+                <div
+                  v-else-if="field.type === 'code'"
+                  class="node-modal__code-editor-wrap"
+                  :class="{ 'node-modal__code-editor-wrap--error': jsonErrors[getFieldKey(field)] }"
+                >
+                  <div class="node-modal__code-editor-header">
+                    <span class="node-modal__code-language">{{ (field as { language?: string }).language?.toUpperCase() || 'CODE' }}</span>
+                    <span v-if="jsonErrors[getFieldKey(field)]" class="node-modal__code-error">
+                      {{ jsonErrors[getFieldKey(field)] }}
+                    </span>
+                  </div>
+                  <textarea
+                    :id="`node-modal-field-${idx}`"
+                    v-model="formState[getFieldKey(field)]"
+                    class="node-modal__code-editor"
+                    :class="{
+                      'node-modal__code-editor--js': (field as { language?: string }).language === 'javascript',
+                      'node-modal__code-editor--json': (field as { language?: string }).language === 'json',
+                      'node-modal__code-editor--invalid': jsonErrors[getFieldKey(field)]
+                    }"
+                    :required="field.required"
+                    :rows="(field as { rows?: number }).rows ?? 5"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    @blur="(field as { language?: string }).language === 'json' && validateJson(field)"
+                    @input="(field as { language?: string }).language === 'json' && validateJson(field)"
+                  />
+                </div>
+                <!-- expression (math only) -->
+                <div
+                  v-else-if="field.labelType === 'EXPRESSION_CODE'"
+                  class="node-modal__expression-wrap"
+                >
+                  <input
+                    :id="`node-modal-field-${idx}`"
+                    v-model="formState[getFieldKey(field)]"
+                    type="text"
+                    class="node-modal__expression-input"
+                    :required="field.required"
+                    placeholder="e.g. 2 + 2 * 3"
+                    @input="validateExpression($event)"
+                  />
+                </div>
                 <!-- textarea -->
                 <textarea
                   v-else-if="field.type === 'textarea'"
@@ -289,9 +388,17 @@ function onApply() {
               </div>
               </template>
               <footer class="node-modal__footer">
-                <button type="submit" class="node-modal__apply">
+                <button 
+                  type="submit" 
+                  class="node-modal__apply"
+                  :disabled="hasValidationErrors"
+                  :class="{ 'node-modal__apply--disabled': hasValidationErrors }"
+                >
                   Apply
                 </button>
+                <p v-if="hasValidationErrors" class="node-modal__error-hint">
+                  Please fix the validation errors above
+                </p>
               </footer>
             </form>
           </template>
@@ -494,6 +601,21 @@ function onApply() {
   background: #1d4ed8;
 }
 
+.node-modal__apply--disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.node-modal__apply--disabled:hover {
+  background: #94a3b8;
+}
+
+.node-modal__error-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #dc2626;
+}
+
 .node-modal__dl {
   margin: 0;
   font-size: 14px;
@@ -544,5 +666,111 @@ function onApply() {
 .node-modal-panel-enter-from,
 .node-modal-panel-leave-to {
   transform: translateX(100%);
+}
+
+/* Code Editor Styles */
+.node-modal__code-editor-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.node-modal__code-editor-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3d3d3d;
+}
+
+.node-modal__code-language {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  letter-spacing: 0.5px;
+}
+
+.node-modal__code-editor {
+  width: 100%;
+  padding: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  background: #1e1e1e;
+  border: none;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.node-modal__code-editor:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.node-modal__code-editor--js {
+  color: #9cdcfe;
+}
+
+.node-modal__code-editor--json {
+  color: #ce9178;
+}
+
+/* Code editor error states */
+.node-modal__code-editor-wrap--error {
+  border-color: #dc2626;
+}
+
+.node-modal__code-editor--invalid {
+  border: 2px solid #dc2626 !important;
+}
+
+.node-modal__code-editor--invalid:focus {
+  box-shadow: inset 0 0 0 2px rgba(220, 38, 38, 0.3);
+}
+
+.node-modal__code-error {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: #f87171;
+}
+
+.node-modal__code-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Expression Input Styles */
+.node-modal__expression-wrap {
+  position: relative;
+}
+
+.node-modal__expression-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 16px;
+  font-weight: 500;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  text-align: center;
+  letter-spacing: 1px;
+}
+
+.node-modal__expression-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.node-modal__expression-input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
 }
 </style>
