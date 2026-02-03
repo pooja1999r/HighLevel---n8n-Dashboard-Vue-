@@ -61,14 +61,34 @@ export function getDefaultValue(field: ConfigField): unknown {
 /**
  * Build userInput object with values from configuration fields
  * Uses default values if no values provided
+ * Excludes BODY field when METHOD is GET for API calls
  */
 export function buildUserInput(
   configuration: ConfigField[],
-  values?: Record<string, unknown>
+  values?: Record<string, unknown>,
+  actionType?: string
 ): Record<string, unknown> {
   const userInput: Record<string, unknown> = {}
+  
+  // First, determine the method value (for API calls)
+  let methodValue: string | undefined
+  if (actionType === nodeActionType.API_CALL) {
+    const methodField = configuration.find(f => getFieldKey(f) === 'METHOD')
+    if (methodField) {
+      methodValue = values?.['METHOD'] !== undefined 
+        ? String(values['METHOD']) 
+        : String(getDefaultValue(methodField))
+    }
+  }
+  
   for (const field of configuration) {
     const key = getFieldKey(field)
+    
+    // Skip BODY field when method is GET
+    if (key === 'BODY' && methodValue === 'GET') {
+      continue
+    }
+    
     if (values && values[key] !== undefined) {
       userInput[key] = values[key]
     } else {
@@ -93,7 +113,6 @@ export function generateExecutableCode(
     const url = String(userInput['URL'] ?? '')
     const method = String(userInput['METHOD'] ?? 'GET')
     const headersRaw = String(userInput['HEADERS'] ?? '')
-    const bodyRaw = String(userInput['BODY'] ?? '')
     let headersObj: Record<string, string> = {}
     try {
       headersObj = headersRaw ? JSON.parse(headersRaw) : {}
@@ -101,6 +120,13 @@ export function generateExecutableCode(
       headersObj = {}
     }
     const headersJson = JSON.stringify(headersObj)
+    
+    // GET requests should not have a body
+    if (method === 'GET') {
+      return `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(method)}, headers: ${headersJson} })`
+    }
+    
+    const bodyRaw = String(userInput['BODY'] ?? '')
     const bodyExpr = bodyRaw ? JSON.stringify(bodyRaw) : 'undefined'
     return `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(method)}, headers: ${headersJson}, body: ${bodyExpr} })`
   }
@@ -125,7 +151,7 @@ export function buildNodeConfig(
   const isTrigger = triggerNode.some((n) => n.name === name)
   const configuration = template?.configuration ?? []
   
-  const userInput = buildUserInput(configuration, values)
+  const userInput = buildUserInput(configuration, values, actionType)
   const executableCode = generateExecutableCode(actionType, userInput)
   
   return {

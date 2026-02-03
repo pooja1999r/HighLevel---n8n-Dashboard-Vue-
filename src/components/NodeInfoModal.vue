@@ -164,9 +164,16 @@ function onApply() {
     ''
 
   // Build userInput object with labelType keys and their values
+  // Exclude BODY when METHOD is GET for API calls
   const userInput: Record<string, unknown> = {}
+  const isGetMethod = actionType === 'api_call' && formState.value['METHOD'] === 'GET'
+  
   for (const field of configFields.value) {
     const key = getFieldKey(field)
+    // Skip BODY field when method is GET
+    if (key === 'BODY' && isGetMethod) {
+      continue
+    }
     userInput[key] = formState.value[key]
   }
 

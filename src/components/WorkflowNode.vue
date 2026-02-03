@@ -69,7 +69,7 @@ function run(fn: keyof Handlers) {
       <!-- Invisible bridge + action bar above the node so cursor can move from node to buttons without leaving the zone -->
       <template v-if="showActions">
         <div class="workflow-node__bridge" aria-hidden="true" />
-        <div class="workflow-node__actions" @mousedown="stopPropagation">
+        <div class="workflow-node__actions" @mousedown="stopPropagation" @click="stopPropagation">
         <button
           type="button"
           class="workflow-node__btn workflow-node__btn--run"
