@@ -272,6 +272,131 @@ function tidyUp() {
   })
 }
 
+/** Export workflow nodes as JSON file */
+function exportWorkflow() {
+  const nodesToExport = workflowStore.nodes.map(node => ({
+    label: node.label,
+    data: node.data,
+  }))
+  
+  if (nodesToExport.length === 0) {
+    executionLogStore.setNotification('error', 'No nodes to export')
+    return
+  }
+  
+  const jsonString = JSON.stringify(nodesToExport, null, 2)
+  const blob = new Blob([jsonString], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `workflow-${Date.now()}.json`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  
+  executionLogStore.setNotification('success', `Exported ${nodesToExport.length} node(s)`)
+}
+
+/** Hidden file input ref for import */
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+/** Trigger file input click */
+function triggerImport() {
+  fileInputRef.value?.click()
+}
+
+/** Validate imported node structure */
+function isValidNodeData(node: unknown): node is { label: string; data: Record<string, unknown> } {
+  if (typeof node !== 'object' || node === null) return false
+  const n = node as Record<string, unknown>
+  
+  if (typeof n.label !== 'string' || !n.label) return false
+  if (typeof n.data !== 'object' || n.data === null) return false
+  
+  const data = n.data as Record<string, unknown>
+  // Check required fields in data
+  if (typeof data.label !== 'string') return false
+  if (typeof data.actionType !== 'string') return false
+  if (typeof data.userInput !== 'object' || data.userInput === null) return false
+  
+  return true
+}
+
+/** Handle file import */
+async function handleImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  
+  if (!file) return
+  
+  try {
+    const text = await file.text()
+    let parsed: unknown
+    
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      executionLogStore.setNotification('error', 'Invalid JSON format')
+      input.value = ''
+      return
+    }
+    
+    // Ensure it's an array
+    const nodes = Array.isArray(parsed) ? parsed : [parsed]
+    
+    // Validate all nodes
+    const invalidNodes = nodes.filter(n => !isValidNodeData(n))
+    if (invalidNodes.length > 0) {
+      executionLogStore.setNotification('error', `Invalid node format. Required: label, data.label, data.actionType, data.userInput`)
+      input.value = ''
+      return
+    }
+    
+    // Add nodes to the flow
+    let startX = 100
+    let startY = 100
+    let addedCount = 0
+    
+    for (const nodeData of nodes as Array<{ label: string; data: Record<string, unknown> }>) {
+      const position = (nodeData.data.position as { x: number; y: number }) ?? { x: startX, y: startY }
+      const isTrigger = nodeData.data.isTrigger === true
+      
+      addNodes({
+        id: `node-${Date.now()}-${addedCount}`,
+        type: 'workflow',
+        position: { x: position.x, y: position.y },
+        label: nodeData.label,
+        data: {
+          ...nodeData.data,
+          label: nodeData.label,
+        },
+      })
+      
+      startX += 200
+      if (startX > 600) {
+        startX = 100
+        startY += 150
+      }
+      addedCount++
+    }
+    
+    nextTick(() => {
+      persistToStore()
+      fitView({ padding: 0.2 })
+    })
+    
+    executionLogStore.setNotification('success', `Imported ${addedCount} node(s)`)
+  } catch (err) {
+    console.error('Import error:', err)
+    executionLogStore.setNotification('error', 'Failed to import workflow')
+  }
+  
+  // Reset input
+  input.value = ''
+}
+
 async function onNodeExecute(id: string) {
   const node = workflowStore.nodes.find((n) => n.id === id)
   if (!node) return
@@ -630,31 +755,67 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
           </svg>
         </button>
       </Panel>
-      <Panel v-if="hasNodes" position="bottom-center" class="workflow-execution-panel">
+      <!-- Hidden file input for import -->
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept=".json"
+        style="display: none"
+        @change="handleImport"
+      />
+      
+      <Panel position="bottom-left" class="workflow-execution-panel">
+        <!-- Import button - visible when NO nodes -->
         <button
-          v-if="!isScheduleActive"
+          v-if="!hasNodes"
           type="button"
-          class="workflow-controls__btn workflow-controls__btn--run"
-          title="Execution workflow"
-          @click="runWorkflow"
+          class="workflow-controls__btn workflow-controls__btn--tooltip workflow-controls__btn--import"
+          data-tooltip="Import workflow"
+          @click="triggerImport"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" />
           </svg>
-          <span class="workflow-controls__btn-label">Execution workflow</span>
         </button>
-        <button
-          v-else
-          type="button"
-          class="workflow-controls__btn workflow-controls__btn--abort workflow-controls__btn--in-progress"
-          title="Abort execution"
-          @click="abortExecution"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 6h12v12H6z" />
-          </svg>
-          <span class="workflow-controls__btn-label">Abort execution</span>
-        </button>
+        
+        <!-- Export and Execution buttons - visible when there ARE nodes -->
+        <template v-if="hasNodes">
+          <button
+            type="button"
+            class="workflow-controls__btn workflow-controls__btn--tooltip workflow-controls__btn--export"
+            data-tooltip="Export workflow"
+            @click="exportWorkflow"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+            </svg>
+          </button>
+          
+          <button
+            v-if="!isScheduleActive"
+            type="button"
+            class="workflow-controls__btn workflow-controls__btn--run"
+            title="Execution workflow"
+            @click="runWorkflow"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <span class="workflow-controls__btn-label">Execution workflow</span>
+          </button>
+          <button
+            v-else
+            type="button"
+            class="workflow-controls__btn workflow-controls__btn--abort workflow-controls__btn--in-progress"
+            title="Abort execution"
+            @click="abortExecution"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h12v12H6z" />
+            </svg>
+            <span class="workflow-controls__btn-label">Abort execution</span>
+          </button>
+        </template>
       </Panel>
     </VueFlow>
 
@@ -798,8 +959,10 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
 
 .workflow-execution-panel {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 8px;
+  gap: 8px;
+  margin-left: 30px;
 }
 
 .workflow-editor__notification {
@@ -859,5 +1022,49 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
 .workflow-controls__btn--tooltip:hover::before {
   opacity: 1;
   visibility: visible;
+}
+
+/* Export/Import button styles */
+.workflow-controls__btn--export,
+.workflow-controls__btn--import {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.workflow-controls__btn--export:hover {
+  background: #dbeafe;
+}
+
+.workflow-controls__btn--export:hover svg {
+  fill: #1d4ed8;
+}
+
+.workflow-controls__btn--import:hover {
+  background: #dcfce7;
+}
+
+.workflow-controls__btn--import:hover svg {
+  fill: #166534;
+}
+
+/* Bottom panel tooltips - appear above */
+.workflow-execution-panel .workflow-controls__btn--tooltip::after {
+  right: auto;
+  left: 50%;
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+}
+
+.workflow-execution-panel .workflow-controls__btn--tooltip::before {
+  right: auto;
+  left: 50%;
+  top: auto;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1e293b;
+  border-left-color: transparent;
 }
 </style>
