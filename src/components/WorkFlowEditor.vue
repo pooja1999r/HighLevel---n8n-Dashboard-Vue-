@@ -446,6 +446,12 @@ async function handleImport(event: Event) {
       }
     }
     
+    if (addedCount === 0) {
+      executionLogStore.setNotification('error', 'Invalid JSON format: No valid nodes found to import')
+      input.value = ''
+      return
+    }
+    
     nextTick(() => {
       persistToStore()
       fitView({ padding: 0.2 })
@@ -879,7 +885,13 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
             <path d="M3 3h8v2H5v6H3V3zm18 0h-8v2h6v6h2V3zM3 21h8v-2H5v-6H3v8zm18 0h-8v-2h6v-6h2v8zM8 8h8v8H8V8zm2 2v4h4v-4h-4z" />
           </svg>
         </button>
-        <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip workflow-controls__btn--delete-all" data-tooltip="Delete all nodes" @click="deleteAllNodes">
+        <button 
+          type="button" 
+          class="workflow-controls__btn workflow-controls__btn--tooltip workflow-controls__btn--delete-all" 
+          data-tooltip="Delete all nodes" 
+          :disabled="!hasNodes"
+          @click="deleteAllNodes"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
           </svg>
@@ -1041,12 +1053,17 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
   fill: #334155;
 }
 
-.workflow-controls__btn:hover {
+.workflow-controls__btn:hover:not(:disabled) {
   background: #f1f5f9;
 }
 
-.workflow-controls__btn:hover svg {
+.workflow-controls__btn:hover:not(:disabled) svg {
   fill: #0f172a;
+}
+
+.workflow-controls__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .workflow-controls__btn--add:hover {
