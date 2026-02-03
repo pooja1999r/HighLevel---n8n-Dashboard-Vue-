@@ -14,6 +14,7 @@ import { useNodeModalStore } from '../stores/nodeModal'
 import type { Execution, ExecutionEntry } from '../stores/executionLog'
 import WorkflowNode from './WorkflowNode.vue'
 import NotificationBanner from './ui-components/NotificationBanner.vue'
+import ConfirmModal from './modal/ConfirmModal.vue'
 import { nodeActionType } from './constants'
 import { 
   buildNodeConfig, 
@@ -612,6 +613,15 @@ const isScheduleActive = ref(false)
 /** Check if there are nodes on the canvas */
 const hasNodes = computed(() => nodes.value.length > 0)
 
+/** Delete all modal state */
+const showDeleteAllModal = ref(false)
+const deleteAllNodeCount = ref(0)
+
+/** Rename modal state */
+const showRenameModal = ref(false)
+const renameNodeId = ref('')
+const renameNodeName = ref('')
+
 function clearSchedule() {
   if (scheduleTimerId) {
     clearInterval(scheduleTimerId)
@@ -628,13 +638,18 @@ function abortExecution() {
   clearSchedule()
 }
 
-/** Delete all nodes from the canvas */
+/** Show delete all confirmation modal */
 function deleteAllNodes() {
   const nodeCount = getNodes.value.length
   if (nodeCount === 0) return
   
-  const confirmed = window.confirm(`Are you sure you want to delete all ${nodeCount} node(s)? This action cannot be undone.`)
-  if (!confirmed) return
+  deleteAllNodeCount.value = nodeCount
+  showDeleteAllModal.value = true
+}
+
+/** Handle delete all confirmation */
+function confirmDeleteAll() {
+  const nodeCount = deleteAllNodeCount.value
   
   // Clear schedule if running
   clearSchedule()
@@ -751,24 +766,34 @@ function onNodeClick({ node }: { node: { id: string } }) {
   onNodeOpen(node.id)
 }
 
+/** Show rename modal */
 function onNodeRename(id: string) {
   const node = workflowStore.nodes.find((n) => n.id === id)
   const currentName = node?.label ?? (node?.data?.label as string) ?? 'Node'
-  const name = window.prompt('Rename node', currentName)
-  if (name != null && name.trim()) {
-    const newName = name.trim()
-    // Update workflow store label
-    workflowStore.updateNodeLabel(id, newName)
-    // Update Vue Flow node - both label and data.label
-    const flowNode = getNodes.value.find((n) => n.id === id)
-    if (flowNode) {
-      flowNode.label = newName
-      flowNode.data = { ...flowNode.data, label: newName }
-    }
-    // Trigger reactivity by setting nodes
-    setFlowNodes([...getNodes.value])
-    nextTick(persistToStore)
+  
+  renameNodeId.value = id
+  renameNodeName.value = currentName
+  showRenameModal.value = true
+}
+
+/** Handle rename confirmation */
+function confirmRename(newName?: string) {
+  if (!newName || !newName.trim()) return
+  
+  const name = newName.trim()
+  const id = renameNodeId.value
+  
+  // Update workflow store label
+  workflowStore.updateNodeLabel(id, name)
+  // Update Vue Flow node - both label and data.label
+  const flowNode = getNodes.value.find((n) => n.id === id)
+  if (flowNode) {
+    flowNode.label = name
+    flowNode.data = { ...flowNode.data, label: name }
   }
+  // Trigger reactivity by setting nodes
+  setFlowNodes([...getNodes.value])
+  nextTick(persistToStore)
 }
 
 async function onNodeCopy(id: string) {
@@ -936,6 +961,31 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
         @dismiss="executionLogStore.clearNotification()"
       />
     </div>
+
+    <!-- Delete All Confirmation Modal -->
+    <ConfirmModal
+      v-model="showDeleteAllModal"
+      title="Delete All Nodes"
+      :message="`Are you sure you want to delete all ${deleteAllNodeCount} node(s)? This action cannot be undone.`"
+      type="confirm"
+      confirm-text="Delete All"
+      cancel-text="Cancel"
+      :danger="true"
+      @confirm="confirmDeleteAll"
+    />
+
+    <!-- Rename Node Modal -->
+    <ConfirmModal
+      v-model="showRenameModal"
+      title="Rename Node"
+      message="Enter a new name for this node:"
+      type="prompt"
+      confirm-text="Rename"
+      cancel-text="Cancel"
+      input-placeholder="Node name"
+      :input-value="renameNodeName"
+      @confirm="confirmRename"
+    />
   </div>
 </template>
 
