@@ -190,40 +190,44 @@ function run(fn: keyof Handlers) {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 4px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  gap: 2px;
+  padding: 3px 4px;
+  background: rgba(226, 232, 240, 0.85);
+  border: none;
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
   z-index: 5;
 }
 
 .workflow-node__btn {
-  width: 14px;
-  height: 14px;
+  width: 22px;
+  height: 22px;
   border: none;
   border-radius: 4px;
-  background: #f8fafc;
-  color: #334155;
+  background: transparent;
+  color: #475569;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 
 .workflow-node__btn svg {
   flex-shrink: 0;
-  fill: #334155;
-  width: 8px;
-  height: 8px;
+  fill: #475569;
+  width: 12px;
+  height: 12px;
+  transition: fill 0.15s ease;
 }
 
 .workflow-node__btn:hover {
-  background: #e2e8f0;
+  background: rgba(255, 255, 255, 0.9);
+  transform: scale(1.1);
 }
 
 .workflow-node__btn:hover svg {
@@ -231,7 +235,7 @@ function run(fn: keyof Handlers) {
 }
 
 .workflow-node__btn--run:hover {
-  background: #dcfce7;
+  background: rgba(220, 252, 231, 0.9);
 }
 
 .workflow-node__btn--run:hover svg {
