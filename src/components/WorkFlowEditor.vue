@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { markRaw, provide, onMounted, onUnmounted, nextTick, ref } from 'vue'
+import { markRaw, provide, onMounted, onUnmounted, nextTick, ref, computed } from 'vue'
 import {
   VueFlow,
   useVueFlow,
@@ -146,20 +146,107 @@ function addNewNode(x: number, y: number, label: string, isTrigger = false, conf
   })
 }
 
-function onAddNode() {
+/** Tidy up nodes - arrange them in a clean layout based on connections */
+function tidyUp() {
   const currentNodes = getNodes.value
-  if (currentNodes.length > 0) {
-    let maxX = -Infinity
-    let maxY = -Infinity
-    currentNodes.forEach((n) => {
-      const pos = n.position
-      if (pos.x > maxX) maxX = pos.x
-      if (pos.y > maxY) maxY = pos.y
+  const currentEdges = getEdges.value
+  if (currentNodes.length === 0) return
+
+  const NODE_WIDTH = 180
+  const NODE_HEIGHT = 80
+  const HORIZONTAL_GAP = 100
+  const VERTICAL_GAP = 60
+
+  // Build adjacency list and find root nodes (no incoming edges)
+  const incomingCount = new Map<string, number>()
+  const outgoing = new Map<string, string[]>()
+  
+  currentNodes.forEach(n => {
+    incomingCount.set(n.id, 0)
+    outgoing.set(n.id, [])
+  })
+  
+  currentEdges.forEach(e => {
+    incomingCount.set(e.target, (incomingCount.get(e.target) ?? 0) + 1)
+    const list = outgoing.get(e.source) ?? []
+    list.push(e.target)
+    outgoing.set(e.source, list)
+  })
+
+  // Find root nodes (triggers or nodes with no incoming edges)
+  const roots = currentNodes.filter(n => 
+    n.data?.isTrigger === true || incomingCount.get(n.id) === 0
+  )
+
+  // BFS to assign levels
+  const levels = new Map<string, number>()
+  const queue: { id: string; level: number }[] = roots.map(n => ({ id: n.id, level: 0 }))
+  const visited = new Set<string>()
+
+  while (queue.length > 0) {
+    const { id, level } = queue.shift()!
+    if (visited.has(id)) continue
+    visited.add(id)
+    levels.set(id, Math.max(levels.get(id) ?? 0, level))
+    
+    const children = outgoing.get(id) ?? []
+    children.forEach(childId => {
+      if (!visited.has(childId)) {
+        queue.push({ id: childId, level: level + 1 })
+      }
     })
-    addNewNode(maxX + 220, maxY, 'New Node')
-  } else {
-    addNewNode(100, 100, 'New Node')
   }
+
+  // Handle disconnected nodes
+  currentNodes.forEach(n => {
+    if (!levels.has(n.id)) {
+      levels.set(n.id, 0)
+    }
+  })
+
+  // Group nodes by level
+  const nodesByLevel = new Map<number, typeof currentNodes>()
+  currentNodes.forEach(n => {
+    const level = levels.get(n.id) ?? 0
+    const list = nodesByLevel.get(level) ?? []
+    list.push(n)
+    nodesByLevel.set(level, list)
+  })
+
+  // Calculate positions
+  const maxLevel = Math.max(...Array.from(levels.values()))
+  const updates: { id: string; position: { x: number; y: number } }[] = []
+
+  for (let level = 0; level <= maxLevel; level++) {
+    const nodesAtLevel = nodesByLevel.get(level) ?? []
+    const totalWidth = nodesAtLevel.length * NODE_WIDTH + (nodesAtLevel.length - 1) * HORIZONTAL_GAP
+    const startX = -totalWidth / 2 + NODE_WIDTH / 2
+
+    nodesAtLevel.forEach((node, index) => {
+      updates.push({
+        id: node.id,
+        position: {
+          x: startX + index * (NODE_WIDTH + HORIZONTAL_GAP),
+          y: level * (NODE_HEIGHT + VERTICAL_GAP) + 50,
+        },
+      })
+    })
+  }
+
+  // Apply position updates
+  updates.forEach(({ id, position }) => {
+    const node = currentNodes.find(n => n.id === id)
+    if (node) {
+      node.position = position
+    }
+  })
+
+  // Update the flow
+  setFlowNodes([...currentNodes])
+  nextTick(() => {
+    persistToStore()
+    fitView({ padding: 0.2 })
+  })
 }
 
 async function onNodeExecute(id: string) {
@@ -293,6 +380,9 @@ async function executeWorkflowNow() {
 let scheduleTimerId: ReturnType<typeof setInterval> | null = null
 let scheduleTimeoutId: ReturnType<typeof setTimeout> | null = null
 const isScheduleActive = ref(false)
+
+/** Check if there are nodes on the canvas */
+const hasNodes = computed(() => nodes.value.length > 0)
 
 function clearSchedule() {
   if (scheduleTimerId) {
@@ -450,28 +540,28 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
       @dragover="onDragOver"
     >
       <Panel position="top-right" class="workflow-controls">
-        <button type="button" class="workflow-controls__btn workflow-controls__btn--add" title="Add node" @click="onAddNode">
+        <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip" data-tooltip="Zoom to fit" @click="fitView({ padding: 0.2 })">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2 6V2h4v2H4v2H2zm20 0V2h-4v2h2v2h2zM2 18v4h4v-2H4v-2H2zm20 0v4h-4v-2h2v-2h2zM9 7h6v2H9V7zm0 8h6v2H9v-2zm-2-4h2v2H7v-2zm8 0h2v2h-2v-2z" />
+          </svg>
+        </button>
+        <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip" data-tooltip="Zoom in" @click="zoomIn()">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
           </svg>
         </button>
-        <button type="button" class="workflow-controls__btn" title="Zoom to fit" @click="fitView()">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M4 4h6v2H4v6H2V4c0-1.1.9-2 2-2zm16 0c1.1 0 2 .9 2 2v6h-2V6h-6V4h6zM4 18h6v2H4c-1.1 0-2-.9-2-2v-6h2v6zm14 0v-6h2v6c0 1.1-.9 2-2 2h-6v-2h6z" />
-          </svg>
-        </button>
-        <button type="button" class="workflow-controls__btn" title="Zoom in" @click="zoomIn()">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-          </svg>
-        </button>
-        <button type="button" class="workflow-controls__btn" title="Zoom out" @click="zoomOut()">
+        <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip" data-tooltip="Zoom out" @click="zoomOut()">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 13H5v-2h14v2z" />
           </svg>
         </button>
+        <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip" data-tooltip="Tidy up" @click="tidyUp">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 3h8v2H5v6H3V3zm18 0h-8v2h6v6h2V3zM3 21h8v-2H5v-6H3v8zm18 0h-8v-2h6v-6h2v8zM8 8h8v8H8V8zm2 2v4h4v-4h-4z" />
+          </svg>
+        </button>
       </Panel>
-      <Panel position="bottom-center" class="workflow-execution-panel">
+      <Panel v-if="hasNodes" position="bottom-center" class="workflow-execution-panel">
         <button
           v-if="!isScheduleActive"
           type="button"
@@ -479,7 +569,7 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
           title="Execution workflow"
           @click="runWorkflow"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5v14l11-7z" />
           </svg>
           <span class="workflow-controls__btn-label">Execution workflow</span>
@@ -491,7 +581,7 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
           title="Abort execution"
           @click="abortExecution"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 6h12v12H6z" />
           </svg>
           <span class="workflow-controls__btn-label">Abort execution</span>
@@ -584,24 +674,37 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
 
 .workflow-controls__btn--run {
   flex-direction: row;
-  gap: 6px;
+  gap: 8px;
   width: auto;
-  padding: 8px 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
 }
 
 .workflow-controls__btn--run:hover {
   background: #dcfce7;
+  transform: translateY(-1px);
 }
 
 .workflow-controls__btn--run:hover svg {
   fill: #166534;
 }
 
+.workflow-controls__btn--run:active {
+  background: #bbf7d0;
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
 .workflow-controls__btn--abort {
   flex-direction: row;
-  gap: 6px;
+  gap: 8px;
   width: auto;
-  padding: 8px 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
 }
 
 .workflow-controls__btn--abort.workflow-controls__btn--in-progress {
@@ -641,5 +744,51 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
 .workflow-execution-panel .workflow-controls__btn--abort {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   border: 1px solid #cbd5e1;
+}
+
+/* Tooltip styles */
+.workflow-controls__btn--tooltip {
+  position: relative;
+}
+
+.workflow-controls__btn--tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  background: #1e293b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 6px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.workflow-controls__btn--tooltip::before {
+  content: '';
+  position: absolute;
+  right: calc(100% + 2px);
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-left-color: #1e293b;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.workflow-controls__btn--tooltip:hover::after,
+.workflow-controls__btn--tooltip:hover::before {
+  opacity: 1;
+  visibility: visible;
 }
 </style>
