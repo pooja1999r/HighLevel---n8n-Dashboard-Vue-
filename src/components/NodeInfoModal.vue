@@ -4,7 +4,15 @@ import { useNodeModalStore } from '../stores/nodeModal'
 import type { ConfigField } from '../stores/nodeModal'
 import { useWorkflowStore } from '../stores/workflow'
 import { useVueFlow } from '@vue-flow/core'
-import { triggerNode, supportedNodeList, nodeActionType } from './constants'
+import { triggerNode, supportedNodeList } from './constants' // Used in template
+import {
+  findTemplateByName,
+  getFieldKey as getFieldKeyFromService,
+  getDefaultValue as getDefaultValueFromService,
+  generateExecutableCode,
+  isTriggerNode,
+  getConfigurationFields,
+} from '../services/nodeService'
 
 const modalStore = useNodeModalStore()
 const workflowStore = useWorkflowStore()
@@ -22,53 +30,48 @@ const title = computed(() => {
   return (p.data.label as string) || p.data.id || 'Node'
 })
 
-const isTemplate = computed(() => modalStore.payload?.type === 'template')
-const templateData = computed(() =>
-  modalStore.payload?.type === 'template' ? modalStore.payload.data : null
-)
 const workflowData = computed(() =>
   modalStore.payload?.type === 'workflow' ? modalStore.payload.data : null
 )
 
-/** Template name (for template payload) or node label (for workflow payload, to find template config). */
+/** Template name from payload or node label. */
 const templateName = computed(() => {
-  if (templateData.value) return templateData.value.name
+  const p = modalStore.payload
+  if (p?.type === 'template') return p.data.name
   if (workflowData.value?.label) return workflowData.value.label as string
   return ''
 })
 
-/** Config fields: from template payload or from template found by workflow node label. */
+/** Config fields: from template found by name. */
 const configFields = computed((): ConfigField[] => {
-  if (templateData.value?.configuration?.length) return templateData.value.configuration as ConfigField[]
   if (!templateName.value) return []
-  const template =
-    triggerNode.find((n) => n.name === templateName.value) ??
-    supportedNodeList.find((n) => n.name === templateName.value)
-  const config = (template as { configuration?: ConfigField[] })?.configuration
-  return config ?? []
+  return getConfigurationFields(templateName.value) as ConfigField[]
 })
 
 const hasConfigForm = computed(() => configFields.value.length > 0)
 
-/** Form state keyed by field label. */
+/** Form state keyed by field labelType (or label as fallback). */
 const formState = ref<Record<string, unknown>>({})
 
+/** Get the key for a config field (labelType if available, otherwise label). */
+function getFieldKey(field: ConfigField): string {
+  return getFieldKeyFromService(field as Parameters<typeof getFieldKeyFromService>[0])
+}
+
 function getDefaultValue(field: ConfigField): unknown {
-  const d = field.default
-  if (d != null && typeof d === 'object' && 'value' in d && typeof (d as { value: unknown }).value === 'string') {
-    return (d as { value: string }).value
-  }
-  return d ?? (field.type === 'number' ? 0 : '')
+  return getDefaultValueFromService(field as Parameters<typeof getDefaultValueFromService>[0])
 }
 
 function initFormState() {
   const state: Record<string, unknown> = {}
-  const saved = isTemplate.value
-    ? workflowStore.getTemplateConfig(templateName.value)
-    : { ...(workflowData.value?.data ?? {}) }
+  const savedConfig = { ...(workflowData.value?.data ?? {}) }
+  
+  // Get userInput from saved config (or use the config itself as fallback for backwards compatibility)
+  const savedUserInput = (savedConfig.userInput as Record<string, unknown>) ?? savedConfig
+  
   for (const field of configFields.value) {
-    const key = field.label
-    state[key] = saved[key] !== undefined ? saved[key] : getDefaultValue(field)
+    const key = getFieldKey(field)
+    state[key] = savedUserInput[key] !== undefined ? savedUserInput[key] : getDefaultValue(field)
   }
   formState.value = state
 }
@@ -86,7 +89,7 @@ function getFieldLabel(field: ConfigField, index: number): string {
   if (field.type === 'number' && field.label === ' between trigger' && index > 0) {
     const prev = configFields.value[index - 1]
     if (prev?.type === 'select' && prev.options?.length) {
-      const selectedValue = formState.value[prev.label]
+      const selectedValue = formState.value[getFieldKey(prev)]
       const valueStr = selectedValue != null ? String(selectedValue) : prev.options[0]?.value ?? ''
       return valueStr + field.label
     }
@@ -94,86 +97,70 @@ function getFieldLabel(field: ConfigField, index: number): string {
   return field.label
 }
 
-/** Show Apply button when modal has a template or workflow node (even if no config fields). */
-const showApplySection = computed(() => (isTemplate.value && templateData.value) || !!workflowData.value)
+/** Show Apply button when modal has a payload. */
+const showApplySection = computed(() => !!modalStore.payload)
 
 function onApply() {
-  const config = { ...formState.value }
   const name = templateName.value
 
-  const template =
-    triggerNode.find((n) => n.name === name) ??
-    supportedNodeList.find((n) => n.name === name)
+  const template = findTemplateByName(name)
   const actionType =
+    (template?.actionType as string | undefined) ||
     (template?.type as string | undefined) ||
     (workflowData.value?.data?.actionType as string | undefined) ||
     ''
 
-  if (actionType) {
-    let executableCode = ''
-    if (actionType === nodeActionType.RUN_CODE) {
-      executableCode = String(config['JavaScript Code'] ?? '')
-    } else if (actionType === nodeActionType.API_CALL) {
-      const url = String(config['URL'] ?? '')
-      const method = String(config['Method'] ?? 'GET')
-      const headersRaw = String(config['Headers'] ?? '')
-      const bodyRaw = String(config['Body'] ?? '')
-      let headersObj: Record<string, string> = {}
-      try {
-        headersObj = headersRaw ? JSON.parse(headersRaw) : {}
-      } catch {
-        headersObj = {}
-      }
-      const headersJson = JSON.stringify(headersObj)
-      const bodyExpr = bodyRaw ? JSON.stringify(bodyRaw) : 'undefined'
-      executableCode = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(method)}, headers: ${headersJson}, body: ${bodyExpr} })`
-    } else if (actionType === nodeActionType.COMPUTATION) {
-      executableCode = String(config['Expression Code'] ?? '')
-    }
-
-    config.actionType = actionType
-    if (executableCode) {
-      config[actionType] = executableCode
-    }
+  // Build userInput object with labelType keys and their values
+  const userInput: Record<string, unknown> = {}
+  for (const field of configFields.value) {
+    const key = getFieldKey(field)
+    userInput[key] = formState.value[key]
   }
 
-  if (isTemplate.value && templateData.value) {
-    // Apply from list (template): save config, then add or update node in Vue Flow
-    workflowStore.setTemplateConfig(name, config)
-    const existing = workflowStore.nodes.find((n) => (n.label ?? n.data?.label) === name)
-    if (existing) {
-      workflowStore.updateNodeData(existing.id, config)
-      flowStore?.updateNodeData(existing.id, config)
-    } else {
-      // Not in Vue Flow: add new node with full configuration
-      const isTrigger = triggerNode.some((n) => n.name === name)
-      const data = { label: name, isTrigger, ...config }
-      const nodes = flowStore?.getNodes?.value ?? []
-      let x = 100
-      let y = 100
-      if (nodes.length > 0) {
-        let maxX = -Infinity
-        let maxY = -Infinity
-        nodes.forEach((n: { position: { x: number; y: number } }) => {
-          if (n.position.x > maxX) maxX = n.position.x
-          if (n.position.y > maxY) maxY = n.position.y
-        })
-        x = maxX + 220
-        y = maxY
-      }
-      flowStore?.addNodes?.({
-        id: `node-${Date.now()}`,
-        type: 'workflow',
-        position: { x, y },
-        label: name,
-        data,
-      })
-    }
-  } else if (workflowData.value) {
-    // Apply from canvas (Open): update current node
+  // Generate executable code using service
+  const executableCode = generateExecutableCode(actionType, userInput)
+
+  // Build the config with actionType and userInput
+  const config: Record<string, unknown> = {
+    actionType,
+    userInput,
+    executableCode,
+    position: { x: 100, y: 100 }
+  }
+
+  // Calculate position for the node
+  const nodes = flowStore?.getNodes?.value ?? []
+  let x = 100
+  let y = 100
+  if (nodes.length > 0) {
+    let maxX = -Infinity
+    let maxY = -Infinity
+    nodes.forEach((n: { position: { x: number; y: number } }) => {
+      if (n.position.x > maxX) maxX = n.position.x
+      if (n.position.y > maxY) maxY = n.position.y
+    })
+    x = maxX + 220
+    y = maxY
+  }
+  config.position = { x, y }
+
+  // Update or add node
+  if (workflowData.value) {
+    // Update existing node on canvas
     const data = { ...workflowData.value.data, ...config }
     workflowStore.updateNodeData(workflowData.value.id, data)
     flowStore?.updateNodeData(workflowData.value.id, data)
+  } else {
+    // Add new node to canvas
+    const isTrigger = isTriggerNode(name)
+    const data = { label: name, isTrigger, ...config }
+    flowStore?.addNodes?.({
+      id: `node-${Date.now()}`,
+      type: 'workflow',
+      position: { x, y },
+      label: name,
+      data,
+    })
   }
   modalStore.close()
 }
@@ -213,32 +200,12 @@ function onApply() {
           </button>
         </header>
         <div class="node-modal__body">
-          <!-- Description (template or workflow with template) -->
-          <template v-if="templateData?.description || (workflowData && templateName)">
-            <p v-if="templateData?.description" class="node-modal__description">
-              {{ templateData.description }}
-            </p>
-            <p v-else-if="workflowData" class="node-modal__description">
-              {{ (triggerNode.find((n) => n.name === templateName) ?? supportedNodeList.find((n) => n.name === templateName))?.description ?? '' }}
-            </p>
-          </template>
+          <!-- Description from template -->
+          <p v-if="templateName" class="node-modal__description">
+            {{ (triggerNode.find((n) => n.name === templateName) ?? supportedNodeList.find((n) => n.name === templateName))?.description ?? '' }}
+          </p>
 
-          <!-- Template-only: actions list -->
-          <template v-if="isTemplate && templateData?.actions?.length">
-            <h3 class="node-modal__section-title">Actions</h3>
-            <ul class="node-modal__list">
-              <li
-                v-for="(action, i) in templateData.actions"
-                :key="i"
-                class="node-modal__list-item"
-              >
-                <strong>{{ action.name }}</strong>
-                <span v-if="action.description">{{ action.description }}</span>
-              </li>
-            </ul>
-          </template>
-
-          <!-- Config form and Apply (template or workflow node; show Apply even when no config fields) -->
+          <!-- Config form and Apply -->
           <template v-if="showApplySection">
             <form class="node-modal__form" @submit.prevent="onApply">
               <template v-if="hasConfigForm">
@@ -257,7 +224,7 @@ function onApply() {
                 <input
                   v-if="field.type === 'text'"
                   :id="`node-modal-field-${idx}`"
-                  v-model="formState[field.label]"
+                  v-model="formState[getFieldKey(field)]"
                   type="text"
                   class="node-modal__input"
                   :required="field.required"
@@ -267,7 +234,7 @@ function onApply() {
                 <input
                   v-else-if="field.type === 'number'"
                   :id="`node-modal-field-${idx}`"
-                  v-model.number="formState[field.label]"
+                  v-model.number="formState[getFieldKey(field)]"
                   type="number"
                   class="node-modal__input"
                   :required="field.required"
@@ -278,7 +245,7 @@ function onApply() {
                 <input
                   v-else-if="field.type === 'time'"
                   :id="`node-modal-field-${idx}`"
-                  v-model="formState[field.label]"
+                  v-model="formState[getFieldKey(field)]"
                   type="time"
                   class="node-modal__input"
                   :required="field.required"
@@ -287,7 +254,7 @@ function onApply() {
                 <select
                   v-else-if="field.type === 'select'"
                   :id="`node-modal-field-${idx}`"
-                  v-model="formState[field.label]"
+                  v-model="formState[getFieldKey(field)]"
                   class="node-modal__input node-modal__select"
                   :required="field.required"
                 >
@@ -303,7 +270,7 @@ function onApply() {
                 <textarea
                   v-else-if="field.type === 'textarea'"
                   :id="`node-modal-field-${idx}`"
-                  v-model="formState[field.label]"
+                  v-model="formState[getFieldKey(field)]"
                   class="node-modal__input node-modal__textarea"
                   :required="field.required"
                   :rows="(field as { rows?: number }).rows ?? 3"
@@ -313,7 +280,7 @@ function onApply() {
                 <input
                   v-else
                   :id="`node-modal-field-${idx}`"
-                  v-model="formState[field.label]"
+                  v-model="formState[getFieldKey(field)]"
                   type="text"
                   class="node-modal__input"
                   :required="field.required"

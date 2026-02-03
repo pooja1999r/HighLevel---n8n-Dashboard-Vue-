@@ -15,6 +15,13 @@ import type { Execution, ExecutionEntry } from '../stores/executionLog'
 import WorkflowNode from './WorkflowNode.vue'
 import NotificationBanner from './ui-components/NotificationBanner.vue'
 import { nodeActionType, triggerNode, supportedNodeList } from './constants'
+import { 
+  buildNodeConfig, 
+  executeNode, 
+  formatExecutedTime, 
+  getScheduleIntervalMs, 
+  msUntilTime 
+} from '../services/nodeService'
 
 const WORKFLOW_NODE_HANDLERS_KEY = 'workflow-node-handlers'
 
@@ -123,16 +130,11 @@ function onDragOver(event: DragEvent) {
 }
 
 function addNewNode(x: number, y: number, label: string, isTrigger = false, config?: Record<string, unknown>) {
-  const templateConfig = workflowStore.getTemplateConfig(label)
-  const template =
-    triggerNode.find((n) => n.name === label) ??
-    supportedNodeList.find((n) => n.name === label)
-  const actionType = template?.type as string | undefined
+  const nodeConfig = buildNodeConfig(label, { x, y })
+  
   const data = {
-    label,
-    isTrigger,
-    ...(actionType ? { actionType } : {}),
-    ...templateConfig,
+    ...nodeConfig,
+    isTrigger: isTrigger || nodeConfig.isTrigger,
     ...(config ?? {}),
   }
   addNodes({
@@ -160,8 +162,49 @@ function onAddNode() {
   }
 }
 
-function onNodeExecute(id: string) {
-  console.log('Execute node:', id)
+async function onNodeExecute(id: string) {
+  const node = workflowStore.nodes.find((n) => n.id === id)
+  if (!node) return
+  
+  executionLogStore.clearExecution()
+  executionLogStore.clearNotification()
+  
+  const startedAt = Date.now()
+  const config = node.data ?? {}
+  const label = node.label ?? (node.data?.label as string) ?? 'Node'
+  
+  const execResult = await executeNode(config)
+  
+  const entry: ExecutionEntry = {
+    id: `entry-${id}-${startedAt}`,
+    nodeId: id,
+    nodeName: label,
+    input: config,
+    output: execResult.output,
+    durationMs: Date.now() - startedAt,
+    status: execResult.status,
+  }
+  
+  const execution: Execution = {
+    id: `exec-${startedAt}`,
+    startedAt,
+    durationMs: Date.now() - startedAt,
+    status: execResult.status,
+    triggerDescription: `Single node execution: ${label}`,
+    executedAtFormatted: formatExecutedTime(startedAt),
+    entries: [entry],
+  }
+  
+  executionLogStore.setExecution(execution)
+  
+  if (execResult.status === 'error') {
+    const errorMessage = execResult.output?.error 
+      ? String(execResult.output.error)
+      : 'Node execution failed.'
+    executionLogStore.setNotification('error', errorMessage)
+  } else {
+    executionLogStore.setNotification('success', `${label} executed successfully.`)
+  }
 }
 
 /** Get nodes in execution order: triggers first, then nodes in topological order by edges. */
@@ -195,71 +238,6 @@ function getExecutionOrder(): { id: string; label: string }[] {
   return order
 }
 
-/** Format time for execution log header (e.g. "2:45:30 PM"). */
-function formatExecutedTime(ts: number): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-async function executeNode(
-  workflowNode: { id: string; label?: string; data?: Record<string, unknown> }
-): Promise<{ output: Record<string, unknown>; status: 'success' | 'error' }> {
-  const data = workflowNode.data ?? {}
-  const actionType = (data.actionType as string | undefined) ?? ''
-  try {
-    if (actionType === nodeActionType.RUN_CODE) {
-      const code = String(data[nodeActionType.RUN_CODE] ?? data['JavaScript Code'] ?? '')
-      const fn = new Function(code)
-      const result = fn()
-      return { output: { result }, status: 'success' }
-    }
-    if (actionType === nodeActionType.API_CALL) {
-      let code = String(data[nodeActionType.API_CALL] ?? '')
-      if (!code) {
-        const url = String(data['URL'] ?? '')
-        const method = String(data['Method'] ?? 'GET')
-        const headersRaw = String(data['Headers'] ?? '')
-        const bodyRaw = String(data['Body'] ?? '')
-        let headersObj: Record<string, string> = {}
-        try {
-          headersObj = headersRaw ? JSON.parse(headersRaw) : {}
-        } catch {
-          headersObj = {}
-        }
-        const headersJson = JSON.stringify(headersObj)
-        const bodyExpr = bodyRaw ? JSON.stringify(bodyRaw) : 'undefined'
-        code = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(method)}, headers: ${headersJson}, body: ${bodyExpr} })`
-      }
-      const fn = new Function('fetch', `return (${code})`)
-      const response = await fn(fetch)
-      let output: unknown = response
-      try {
-        if (response && typeof response.json === 'function') {
-          output = await response.json()
-        }
-      } catch {
-        output = response
-      }
-      return { output: { response: output }, status: 'success' }
-    }
-    if (actionType === nodeActionType.COMPUTATION) {
-      const expr = String(data[nodeActionType.COMPUTATION] ?? data['Expression Code'] ?? '')
-      const fn = new Function(`return (${expr})`)
-      const result = fn()
-      return { output: { result }, status: 'success' }
-    }
-    if (actionType === nodeActionType.MANUAL_TRIGGER || actionType === nodeActionType.SCHEDULE_TRIGGER) {
-      return { output: { trigger: actionType }, status: 'success' }
-    }
-    return { output: { result: 'No executable action' }, status: 'success' }
-  } catch (error) {
-    return { output: { error: String(error) }, status: 'error' }
-  }
-}
 
 /** Build execution entries and run the workflow. */
 async function executeWorkflowNow() {
@@ -270,12 +248,12 @@ async function executeWorkflowNow() {
   const nodesById = new Map(workflowStore.nodes.map((n) => [n.id, n]))
   const entries: ExecutionEntry[] = []
   let hasError = false
-  for (const [index, node] of order.entries()) {
+  for (const node of order) {
     const workflowNode = nodesById.get(node.id)
     const config = workflowNode?.data ?? {}
-    const durationMs = 3 + (index % 7)
+    const nodeStartedAt = Date.now()
     const execResult = workflowNode
-      ? await executeNode({ id: node.id, label: node.label, data: config })
+      ? await executeNode(config)
       : { output: { error: 'Node not found' }, status: 'error' as const }
     if (execResult.status === 'error') hasError = true
     const output = execResult.output
@@ -285,7 +263,7 @@ async function executeWorkflowNow() {
       nodeName: node.label,
       input: config,
       output,
-      durationMs,
+      durationMs: Date.now() - nodeStartedAt,
       status: execResult.status,
     })
   }
@@ -301,11 +279,16 @@ async function executeWorkflowNow() {
   }
   executionLogStore.setExecution(execution)
   if (hasError) {
-    executionLogStore.setNotification('error', 'Execution failed for one or more nodes.')
+    // Find the first error message from failed entries
+    const failedEntry = entries.find(e => e.status === 'error')
+    const errorMessage = failedEntry?.output?.error 
+      ? String(failedEntry.output.error)
+      : 'Execution failed for one or more nodes.'
+    executionLogStore.setNotification('error', errorMessage)
   } else {
     executionLogStore.setNotification('success', 'Execution completed successfully.')
   }
-}
+} 
 
 let scheduleTimerId: ReturnType<typeof setInterval> | null = null
 let scheduleTimeoutId: ReturnType<typeof setTimeout> | null = null
@@ -325,31 +308,6 @@ function clearSchedule() {
 
 function abortExecution() {
   clearSchedule()
-}
-
-/** Get interval ms from Schedule Trigger config. */
-function getScheduleIntervalMs(triggerOn: string, between: number): number {
-  const units: Record<string, number> = {
-    sec: 1000,
-    min: 60 * 1000,
-    hour: 60 * 60 * 1000,
-    day: 24 * 60 * 60 * 1000,
-    week: 7 * 24 * 60 * 60 * 1000,
-    month: 30 * 24 * 60 * 60 * 1000,
-  }
-  const unitMs = units[triggerOn] ?? 60 * 1000
-  return Math.max(1, between) * unitMs
-}
-
-/** Parse Time "HH:mm" and return ms until that time today (or 0 if passed). */
-function msUntilTime(timeStr: string): number {
-  const [h, m] = (timeStr || '00:00').split(':').map(Number)
-  const now = new Date()
-  const target = new Date(now)
-  target.setHours(h ?? 0, m ?? 0, 0, 0)
-  let ms = target.getTime() - now.getTime()
-  if (ms < 0) ms += 24 * 60 * 60 * 1000
-  return ms
 }
 
 async function runWorkflow() {

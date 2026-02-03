@@ -11,6 +11,8 @@ export interface ConfigFieldOption {
 export interface ConfigField {
   type: string
   label: string
+  /** Key identifier for formState (uses this instead of label if provided) */
+  labelType?: string
   description?: string
   required?: boolean
   default?: unknown

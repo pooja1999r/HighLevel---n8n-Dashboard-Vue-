@@ -8,7 +8,7 @@ export const nodeActionType = {
 export const triggerNode = [
     {
         name: 'Manual Trigger',
-        type: nodeActionType.MANUAL_TRIGGER,
+        actionType: nodeActionType.MANUAL_TRIGGER,
         icon: '',
         url: '',
         description:
@@ -17,7 +17,7 @@ export const triggerNode = [
       },
       {
         name: 'Schedule Trigger',
-        type: nodeActionType.SCHEDULE_TRIGGER,
+        actionType: nodeActionType.SCHEDULE_TRIGGER,
         icon: '',
         url: '',
         description:
@@ -25,6 +25,7 @@ export const triggerNode = [
         configuration: [
           {
             type: 'select',
+            labelType: 'TRIGGER_ON',
             label: 'Trigger on',
             description: 'The schedule to run the workflow on.',
             required: true,
@@ -61,6 +62,7 @@ export const triggerNode = [
           },
           {
             type: 'number',
+            labelType: 'INTERVAL_BETWEEN_TRIGGER',
             label: ' between trigger',
             description: 'The time between triggers.',
             required: true,
@@ -68,6 +70,7 @@ export const triggerNode = [
           },
           {
             type: 'time',
+            labelType: 'TIME_TO_TRIGGER',
             label: 'Time',
             description: 'The time to trigger the workflow at.',
             required: true,
@@ -81,7 +84,7 @@ export const triggerNode = [
 export const supportedNodeList = [
   {
     name: 'Run Code',
-    type: nodeActionType.RUN_CODE,
+    actionType: nodeActionType.RUN_CODE,
     icon: '',
     url: '',
     description:
@@ -89,17 +92,18 @@ export const supportedNodeList = [
     configuration: [
       {
         type: 'textarea',
+        labelType: 'JAVASCRIPT_CODE',
         label: 'JavaScript Code',
         description: 'The JavaScript code to run.',
         required: true,
         default: 'console.log("Hello, world!")',
         language: 'javascript',
       }
-    ],
+    ]
   },  
   {
     name: 'API Call',
-    type: nodeActionType.API_CALL,
+    actionType: nodeActionType.API_CALL,
     icon: '',
     url: '',
     description:
@@ -107,6 +111,7 @@ export const supportedNodeList = [
     configuration: [
       {
         type: 'text',
+        labelType: 'URL',
         label: 'URL',
         description: 'The URL to call.',
         required: true,
@@ -114,6 +119,7 @@ export const supportedNodeList = [
       },
       {
         type: 'text',
+        labelType: 'HEADERS',
         label: 'Headers',
         description: 'The headers of the request.',
         required: false,
@@ -121,6 +127,7 @@ export const supportedNodeList = [
       },
       {
         type: 'select',
+        labelType: 'METHOD',
         label: 'Method',
         description: 'The HTTP method to use.',
         required: true,
@@ -135,6 +142,7 @@ export const supportedNodeList = [
       },
       {
         type: 'textarea',
+        labelType: 'BODY',
         label: 'Body',
         description: 'The body of the request.',
         required: false,
@@ -145,7 +153,7 @@ export const supportedNodeList = [
   },
   {
     name: 'Computation',
-    type: nodeActionType.COMPUTATION,
+    actionType: nodeActionType.COMPUTATION,
     icon: '',
     url: '',
     description:
@@ -153,6 +161,7 @@ export const supportedNodeList = [
     configuration: [
       {
         type: 'text',
+        labelType: 'EXPRESSION_CODE',
         label: 'Expression Code',
         description: 'The expression to evaluate.',
         required: true,

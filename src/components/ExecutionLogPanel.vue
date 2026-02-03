@@ -5,8 +5,6 @@ import type { ExecutionEntry } from '../stores/executionLog'
 
 const logStore = useExecutionLogStore()
 
-const activeTab = computed(() => 'output' as 'input' | 'output')
-
 /** Flatten output to key-value rows for table. If output is a plain object, one row per key. */
 function outputRows(entry: ExecutionEntry | null): { key: string; value: string }[] {
   if (!entry?.output) return []
@@ -119,14 +117,6 @@ function formatValue(v: unknown): string {
           <span class="execution-log__detail-status">
             Success in {{ logStore.selectedEntry.durationMs }}ms
           </span>
-          <div class="execution-log__detail-tabs">
-            <button type="button" class="execution-log__tab" :class="{ 'execution-log__tab--active': activeTab === 'input' }">
-              Input
-            </button>
-            <button type="button" class="execution-log__tab execution-log__tab--active">
-              Output
-            </button>
-          </div>
         </header>
         <div class="execution-log__content">
           <div class="execution-log__content-header">
