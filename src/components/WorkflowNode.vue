@@ -169,20 +169,20 @@ function run(fn: keyof Handlers) {
   margin-bottom: 6px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 2px 4px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   z-index: 5;
 }
 
 .workflow-node__btn {
-  width: 28px;
-  height: 28px;
+  width: 14px;
+  height: 14px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #f8fafc;
   color: #334155;
   cursor: pointer;
@@ -194,6 +194,8 @@ function run(fn: keyof Handlers) {
 .workflow-node__btn svg {
   flex-shrink: 0;
   fill: #334155;
+  width: 8px;
+  height: 8px;
 }
 
 .workflow-node__btn:hover {
@@ -226,26 +228,25 @@ function run(fn: keyof Handlers) {
 
 .workflow-node__dropdown {
   position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
+  top: calc(100% + 4px);
+  left: 0;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 4px 0;
-  min-width: 100px;
+  min-width: 90px;
   z-index: 10;
 }
 
 .workflow-node__dropdown-item {
   display: block;
   width: 100%;
-  padding: 6px 12px;
+  padding: 4px 8px;
   border: none;
   background: none;
   text-align: left;
-  font-size: 13px;
+  font-size: 12px;
   color: #334155;
   cursor: pointer;
 }

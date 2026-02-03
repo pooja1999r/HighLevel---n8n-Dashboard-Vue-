@@ -272,9 +272,10 @@ function tidyUp() {
   })
 }
 
-/** Export workflow nodes as JSON file */
+/** Export workflow nodes and edges as JSON file */
 function exportWorkflow() {
   const nodesToExport = workflowStore.nodes.map(node => ({
+    id: node.id,
     label: node.label,
     data: node.data,
   }))
@@ -284,7 +285,18 @@ function exportWorkflow() {
     return
   }
   
-  const jsonString = JSON.stringify(nodesToExport, null, 2)
+  // Export edges with source and target node IDs
+  const edgesToExport = workflowStore.edges.map(edge => ({
+    source: edge.source,
+    target: edge.target,
+  }))
+  
+  const exportData = {
+    nodes: nodesToExport,
+    edges: edgesToExport,
+  }
+  
+  const jsonString = JSON.stringify(exportData, null, 2)
   const blob = new Blob([jsonString], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   
@@ -296,7 +308,7 @@ function exportWorkflow() {
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
   
-  executionLogStore.setNotification('success', `Exported ${nodesToExport.length} node(s)`)
+  executionLogStore.setNotification('success', `Exported ${nodesToExport.length} node(s) and ${edgesToExport.length} edge(s)`)
 }
 
 /** Hidden file input ref for import */
@@ -343,28 +355,53 @@ async function handleImport(event: Event) {
       return
     }
     
-    // Ensure it's an array
-    const nodes = Array.isArray(parsed) ? parsed : [parsed]
+    // Determine format: new format { nodes: [], edges: [] } or old format (array of nodes)
+    let nodesToImport: Array<{ id?: string; label: string; data: Record<string, unknown> }> = []
+    let edgesToImport: Array<{ source: string; target: string }> = []
+    
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>
+      // New format with nodes and edges
+      if (Array.isArray(obj.nodes)) {
+        nodesToImport = obj.nodes as typeof nodesToImport
+      }
+      if (Array.isArray(obj.edges)) {
+        edgesToImport = obj.edges as typeof edgesToImport
+      }
+    } else if (Array.isArray(parsed)) {
+      // Old format: array of nodes
+      nodesToImport = parsed as typeof nodesToImport
+    } else {
+      // Single node
+      nodesToImport = [parsed as typeof nodesToImport[0]]
+    }
     
     // Validate all nodes
-    const invalidNodes = nodes.filter(n => !isValidNodeData(n))
+    const invalidNodes = nodesToImport.filter(n => !isValidNodeData(n))
     if (invalidNodes.length > 0) {
       executionLogStore.setNotification('error', `Invalid node format. Required: label, data.label, data.actionType, data.userInput`)
       input.value = ''
       return
     }
     
+    // Create ID mapping (old ID -> new ID) for edge connections
+    const idMapping = new Map<string, string>()
+    
     // Add nodes to the flow
     let startX = 100
     let startY = 100
     let addedCount = 0
     
-    for (const nodeData of nodes as Array<{ label: string; data: Record<string, unknown> }>) {
+    for (const nodeData of nodesToImport) {
       const position = (nodeData.data.position as { x: number; y: number }) ?? { x: startX, y: startY }
-      const isTrigger = nodeData.data.isTrigger === true
+      const oldId = nodeData.id ?? `temp-${addedCount}`
+      const newId = `node-${Date.now()}-${addedCount}`
+      
+      // Store ID mapping for edges
+      idMapping.set(oldId, newId)
       
       addNodes({
-        id: `node-${Date.now()}-${addedCount}`,
+        id: newId,
         type: 'workflow',
         position: { x: position.x, y: position.y },
         label: nodeData.label,
@@ -382,12 +419,29 @@ async function handleImport(event: Event) {
       addedCount++
     }
     
+    // Add edges based on the mapping
+    let edgesAdded = 0
+    for (const edge of edgesToImport) {
+      const newSource = idMapping.get(edge.source)
+      const newTarget = idMapping.get(edge.target)
+      
+      if (newSource && newTarget) {
+        addEdges({
+          id: `edge-${Date.now()}-${edgesAdded}`,
+          source: newSource,
+          target: newTarget,
+        })
+        edgesAdded++
+      }
+    }
+    
     nextTick(() => {
       persistToStore()
       fitView({ padding: 0.2 })
     })
     
-    executionLogStore.setNotification('success', `Imported ${addedCount} node(s)`)
+    const edgeMsg = edgesAdded > 0 ? ` and ${edgesAdded} edge(s)` : ''
+    executionLogStore.setNotification('success', `Imported ${addedCount} node(s)${edgeMsg}`)
   } catch (err) {
     console.error('Import error:', err)
     executionLogStore.setNotification('error', 'Failed to import workflow')
@@ -561,6 +615,30 @@ function clearSchedule() {
 
 function abortExecution() {
   clearSchedule()
+}
+
+/** Delete all nodes from the canvas */
+function deleteAllNodes() {
+  const nodeCount = getNodes.value.length
+  if (nodeCount === 0) return
+  
+  const confirmed = window.confirm(`Are you sure you want to delete all ${nodeCount} node(s)? This action cannot be undone.`)
+  if (!confirmed) return
+  
+  // Clear schedule if running
+  clearSchedule()
+  
+  // Remove all nodes (edges will be removed automatically)
+  const nodeIds = getNodes.value.map(n => n.id)
+  removeNodes(nodeIds)
+  
+  // Clear execution logs
+  executionLogStore.clearExecution()
+  
+  // Persist to store
+  nextTick(persistToStore)
+  
+  executionLogStore.setNotification('success', `Deleted ${nodeCount} node(s)`)
 }
 
 async function runWorkflow() {
@@ -754,6 +832,11 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
             <path d="M3 3h8v2H5v6H3V3zm18 0h-8v2h6v6h2V3zM3 21h8v-2H5v-6H3v8zm18 0h-8v-2h6v-6h2v8zM8 8h8v8H8V8zm2 2v4h4v-4h-4z" />
           </svg>
         </button>
+        <button type="button" class="workflow-controls__btn workflow-controls__btn--tooltip workflow-controls__btn--delete-all" data-tooltip="Delete all nodes" @click="deleteAllNodes">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+          </svg>
+        </button>
       </Panel>
       <!-- Hidden file input for import -->
       <input
@@ -900,6 +983,14 @@ provide(WORKFLOW_NODE_HANDLERS_KEY, {
 
 .workflow-controls__btn--add:hover svg {
   fill: #166534;
+}
+
+.workflow-controls__btn--delete-all:hover {
+  background: #fee2e2;
+}
+
+.workflow-controls__btn--delete-all:hover svg {
+  fill: #991b1b;
 }
 
 .workflow-controls__btn--run {
