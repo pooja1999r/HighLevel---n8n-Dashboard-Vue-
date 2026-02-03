@@ -687,20 +687,26 @@ async function runWorkflow() {
 
   if (triggerActionType === nodeActionType.SCHEDULE_TRIGGER) {
     const data = (triggerNodeData?.data ?? {}) as Record<string, unknown>
-    const triggerOn = String(data['Trigger on'] ?? 'min')
-    const between = Number(data[' between trigger'] ?? 1) || 1
-    const timeStr = String(data['Time'] ?? '00:00')
+    // Get values from userInput (using labelType keys) or fallback to data directly
+    const userInput = (data.userInput as Record<string, unknown>) ?? data
+    
+    // TRIGGER_ON stores the value like 'sec', 'min', 'hour', 'day', 'week', 'month'
+    const triggerOn = String(userInput['TRIGGER_ON'] ?? 'min')
+    // INTERVAL_BETWEEN_TRIGGER stores the interval number
+    const between = Number(userInput['INTERVAL_BETWEEN_TRIGGER'] ?? 1) || 1
+    // TIME_TO_TRIGGER stores the time string like '00:00'
+    const timeStr = String(userInput['TIME_TO_TRIGGER'] ?? '00:00')
 
     const intervalMs = getScheduleIntervalMs(triggerOn, between)
     const firstRunMs = msUntilTime(timeStr)
 
-  let isExecuting = false
-  const runScheduled = async () => {
-    if (isExecuting) return
-    isExecuting = true
-    await executeWorkflowNow()
-    isExecuting = false
-  }
+    let isExecuting = false
+    const runScheduled = async () => {
+      if (isExecuting) return
+      isExecuting = true
+      await executeWorkflowNow()
+      isExecuting = false
+    }
 
     isScheduleActive.value = true
     if (firstRunMs <= 1000) {
