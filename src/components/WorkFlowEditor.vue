@@ -14,7 +14,7 @@ import { useNodeModalStore } from '../stores/nodeModal'
 import type { Execution, ExecutionEntry } from '../stores/executionLog'
 import WorkflowNode from './WorkflowNode.vue'
 import NotificationBanner from './ui-components/NotificationBanner.vue'
-import { nodeActionType, triggerNode, supportedNodeList } from './constants'
+import { nodeActionType } from './constants'
 import { 
   buildNodeConfig, 
   executeNode, 
@@ -74,7 +74,14 @@ function hydrateFromStore() {
 
 /** Persist current Vue Flow state to Pinia (after any nodes/edges change). */
 function persistToStore() {
-  workflowStore.syncFromFlow(getNodes.value, getEdges.value)
+  const nodesToSync = getNodes.value.map(n => ({
+    id: n.id,
+    type: n.type,
+    position: n.position,
+    label: typeof n.label === 'string' ? n.label : (n.data?.label as string | undefined),
+    data: n.data as Record<string, unknown> | undefined,
+  }))
+  workflowStore.syncFromFlow(nodesToSync, getEdges.value)
 }
 
 /** Persist viewport to store when pan/zoom ends. */
@@ -153,7 +160,6 @@ function tidyUp() {
   if (currentNodes.length === 0) return
 
   const NODE_WIDTH = 180
-  const NODE_HEIGHT = 60
   const HORIZONTAL_GAP = 80
   const VERTICAL_GAP = 100
   const TREE_GAP = 150 // Gap between separate trees
@@ -227,7 +233,7 @@ function tidyUp() {
     // Position children centered under this node
     let currentX = centerX - totalChildrenWidth / 2
     nodeChildren.forEach((childId, index) => {
-      const childWidth = childWidths[index]
+      const childWidth = childWidths[index] ?? NODE_WIDTH
       const childCenterX = currentX + childWidth / 2
       positionSubtree(childId, childCenterX, y + VERTICAL_GAP, new Set(visited))
       currentX += childWidth + HORIZONTAL_GAP
@@ -236,7 +242,7 @@ function tidyUp() {
 
   // Position each tree starting from roots
   let treeStartX = 0
-  roots.forEach((root, treeIndex) => {
+  roots.forEach((root) => {
     if (positioned.has(root.id)) return
     
     const treeWidth = getSubtreeWidth(root.id, new Set())
@@ -585,8 +591,9 @@ async function executeWorkflowNow() {
   if (hasError) {
     // Find the first error message from failed entries
     const failedEntry = entries.find(e => e.status === 'error')
-    const errorMessage = failedEntry?.output?.error 
-      ? String(failedEntry.output.error)
+    const failedOutput = failedEntry?.output as Record<string, unknown> | undefined
+    const errorMessage = failedOutput?.error 
+      ? String(failedOutput.error)
       : 'Execution failed for one or more nodes.'
     executionLogStore.setNotification('error', errorMessage)
   } else {

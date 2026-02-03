@@ -51,7 +51,7 @@ const configFields = computed((): ConfigField[] => {
 const hasConfigForm = computed(() => configFields.value.length > 0)
 
 /** Form state keyed by field labelType (or label as fallback). */
-const formState = ref<Record<string, unknown>>({})
+const formState = ref<Record<string, string | number | null>>({})
 
 /** Get the key for a config field (labelType if available, otherwise label). */
 function getFieldKey(field: ConfigField): string {
@@ -63,7 +63,7 @@ function getDefaultValue(field: ConfigField): unknown {
 }
 
 function initFormState() {
-  const state: Record<string, unknown> = {}
+  const state: Record<string, string | number | null> = {}
   const savedConfig = { ...(workflowData.value?.data ?? {}) }
   
   // Get userInput from saved config (or use the config itself as fallback for backwards compatibility)
@@ -71,7 +71,8 @@ function initFormState() {
   
   for (const field of configFields.value) {
     const key = getFieldKey(field)
-    state[key] = savedUserInput[key] !== undefined ? savedUserInput[key] : getDefaultValue(field)
+    const value = savedUserInput[key] !== undefined ? savedUserInput[key] : getDefaultValue(field)
+    state[key] = value as string | number | null
   }
   formState.value = state
 }
