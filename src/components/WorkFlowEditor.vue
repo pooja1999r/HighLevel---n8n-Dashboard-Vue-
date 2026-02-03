@@ -120,13 +120,15 @@ function onDragOver(event: DragEvent) {
   event.dataTransfer!.dropEffect = 'move'
 }
 
-function addNewNode(x: number, y: number, label: string, isTrigger = false) {
+function addNewNode(x: number, y: number, label: string, isTrigger = false, config?: Record<string, unknown>) {
+  const templateConfig = workflowStore.getTemplateConfig(label)
+  const data = { label, isTrigger, ...templateConfig, ...(config ?? {}) }
   addNodes({
     id: `node-${Date.now()}`,
     type: 'workflow',
     position: { x, y },
     label,
-    data: { label, isTrigger },
+    data,
   })
 }
 
@@ -186,13 +188,20 @@ function runWorkflow() {
   const order = getExecutionOrder()
   if (order.length === 0) return
   const startedAt = Date.now()
+  const nodesById = new Map(workflowStore.nodes.map((n) => [n.id, n]))
   const entries: ExecutionEntry[] = order.map((node, index) => {
+    const workflowNode = nodesById.get(node.id)
+    const config = workflowNode?.data ?? {}
     const durationMs = 3 + (index % 7)
-    const output: Record<string, unknown> = index === 0 ? { myNewField: 1 } : { result: `output from ${node.label}`, index }
+    const output: Record<string, unknown> =
+      index === 0
+        ? { myNewField: 1, ...config }
+        : { result: `output from ${node.label}`, index, config }
     return {
       id: `entry-${node.id}-${startedAt}`,
       nodeId: node.id,
       nodeName: node.label,
+      input: config,
       output,
       durationMs,
       status: 'success' as const,
@@ -236,7 +245,8 @@ function onNodeCopy(id: string) {
   const pos = node.position
   const label = (node.data?.label as string) ?? (node.label as string) ?? 'Node'
   const isTrigger = (node.data?.isTrigger as boolean) ?? false
-  addNewNode(pos.x + 180, pos.y + 100, `Copy of ${label}`, isTrigger)
+  const { label: _l, isTrigger: _t, ...config } = (node.data ?? {}) as Record<string, unknown>
+  addNewNode(pos.x + 180, pos.y + 100, `Copy of ${label}`, isTrigger, config)
 }
 
 function onNodeDuplicate(id: string) {
@@ -245,7 +255,8 @@ function onNodeDuplicate(id: string) {
   const pos = node.position
   const label = (node.data?.label as string) ?? (node.label as string) ?? 'Node'
   const isTrigger = (node.data?.isTrigger as boolean) ?? false
-  addNewNode(pos.x + 200, pos.y, label, isTrigger)
+  const { label: _l, isTrigger: _t, ...config } = (node.data ?? {}) as Record<string, unknown>
+  addNewNode(pos.x + 200, pos.y, label, isTrigger, config)
 }
 
 provide(WORKFLOW_NODE_HANDLERS_KEY, {

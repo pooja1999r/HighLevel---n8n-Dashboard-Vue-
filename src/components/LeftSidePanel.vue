@@ -32,12 +32,21 @@ const handleItemClick = (item: string) => {
     triggerNode.find((n) => n.name === item) ??
     supportedNodeList.find((n) => n.name === item)
   if (template) {
+    const t = template as {
+      name: string
+      description?: string
+      icon?: string
+      url?: string
+      actions?: Array<{ name: string; description?: string }>
+      configuration?: Array<Record<string, unknown>>
+    }
     nodeModalStore.openTemplate({
-      name: template.name,
-      description: template.description,
-      icon: template.icon,
-      url: template.url,
-      actions: (template as { actions?: Array<{ name: string; description?: string }> }).actions,
+      name: t.name,
+      description: t.description,
+      icon: t.icon,
+      url: t.url,
+      actions: t.actions,
+      configuration: t.configuration,
     })
   }
 }

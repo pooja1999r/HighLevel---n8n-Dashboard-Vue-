@@ -31,6 +31,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const configuration = ref<WorkflowConfig>({})
   const selectedNodeId = ref<string | null>(null)
   const workflowName = ref('Untitled Workflow')
+  /** Default config per template name (e.g. "Schedule Trigger" -> { Trigger on: "...", ... }). */
+  const templateConfigs = ref<Record<string, Record<string, unknown>>>({})
 
   const hasSelection = computed(() => selectedNodeId.value != null)
   const nodeCount = computed(() => nodes.value.length)
@@ -106,10 +108,26 @@ export const useWorkflowStore = defineStore('workflow', () => {
     configuration.value = {}
   }
 
+  function getTemplateConfig(templateName: string): Record<string, unknown> {
+    return templateConfigs.value[templateName] ? { ...templateConfigs.value[templateName] } : {}
+  }
+
+  function setTemplateConfig(templateName: string, config: Record<string, unknown>) {
+    templateConfigs.value[templateName] = { ...config }
+  }
+
+  function updateNodeData(nodeId: string, data: Record<string, unknown>) {
+    const node = nodes.value.find((n) => n.id === nodeId)
+    if (node) {
+      node.data = { ...(node.data ?? {}), ...data }
+    }
+  }
+
   return {
     nodes,
     edges,
     configuration,
+    templateConfigs,
     selectedNodeId,
     workflowName,
     hasSelection,
@@ -126,5 +144,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     setNodes,
     setEdges,
     resetWorkflow,
+    getTemplateConfig,
+    setTemplateConfig,
+    updateNodeData,
   }
 })

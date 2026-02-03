@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useNodeModalStore } from '../stores/nodeModal'
+import type { ConfigField } from '../stores/nodeModal'
+import { useWorkflowStore } from '../stores/workflow'
+import { useVueFlow } from '@vue-flow/core'
+import { triggerNode, supportedNodeList } from './constants'
 
 const modalStore = useNodeModalStore()
+const workflowStore = useWorkflowStore()
+let flowStore: ReturnType<typeof useVueFlow> | null = null
+try {
+  flowStore = useVueFlow('workflow-editor')
+} catch {
+  flowStore = null
+}
 
 const title = computed(() => {
   const p = modalStore.payload
@@ -18,6 +29,69 @@ const templateData = computed(() =>
 const workflowData = computed(() =>
   modalStore.payload?.type === 'workflow' ? modalStore.payload.data : null
 )
+
+/** Template name (for template payload) or node label (for workflow payload, to find template config). */
+const templateName = computed(() => {
+  if (templateData.value) return templateData.value.name
+  if (workflowData.value?.label) return workflowData.value.label as string
+  return ''
+})
+
+/** Config fields: from template payload or from template found by workflow node label. */
+const configFields = computed((): ConfigField[] => {
+  if (templateData.value?.configuration?.length) return templateData.value.configuration as ConfigField[]
+  if (!templateName.value) return []
+  const template =
+    triggerNode.find((n) => n.name === templateName.value) ??
+    supportedNodeList.find((n) => n.name === templateName.value)
+  const config = (template as { configuration?: ConfigField[] })?.configuration
+  return config ?? []
+})
+
+const hasConfigForm = computed(() => configFields.value.length > 0)
+
+/** Form state keyed by field label. */
+const formState = ref<Record<string, unknown>>({})
+
+function getDefaultValue(field: ConfigField): unknown {
+  const d = field.default
+  if (d != null && typeof d === 'object' && 'value' in d && typeof (d as { value: unknown }).value === 'string') {
+    return (d as { value: string }).value
+  }
+  return d ?? (field.type === 'number' ? 0 : '')
+}
+
+function initFormState() {
+  const state: Record<string, unknown> = {}
+  const saved = isTemplate.value
+    ? workflowStore.getTemplateConfig(templateName.value)
+    : { ...(workflowData.value?.data ?? {}) }
+  for (const field of configFields.value) {
+    const key = field.label
+    state[key] = saved[key] !== undefined ? saved[key] : getDefaultValue(field)
+  }
+  formState.value = state
+}
+
+watch(
+  () => [modalStore.isOpen, modalStore.payload] as const,
+  () => {
+    if (modalStore.isOpen && hasConfigForm.value) initFormState()
+  },
+  { immediate: true }
+)
+
+function onApply() {
+  if (!hasConfigForm.value) return
+  if (isTemplate.value && templateData.value) {
+    workflowStore.setTemplateConfig(templateData.value.name, { ...formState.value })
+  } else if (workflowData.value) {
+    const data = { ...formState.value }
+    workflowStore.updateNodeData(workflowData.value.id, data)
+    flowStore?.updateNodeData(workflowData.value.id, data)
+  }
+  modalStore.close()
+}
 </script>
 
 <template>
@@ -54,26 +128,120 @@ const workflowData = computed(() =>
           </button>
         </header>
         <div class="node-modal__body">
-          <!-- Template node (from LeftSidePanel list) -->
-          <template v-if="isTemplate && templateData">
-            <p v-if="templateData.description" class="node-modal__description">
+          <!-- Description (template or workflow with template) -->
+          <template v-if="templateData?.description || (workflowData && templateName)">
+            <p v-if="templateData?.description" class="node-modal__description">
               {{ templateData.description }}
             </p>
-            <template v-if="templateData.actions?.length">
-              <h3 class="node-modal__section-title">Actions</h3>
-              <ul class="node-modal__list">
-                <li
-                  v-for="(action, i) in templateData.actions"
-                  :key="i"
-                  class="node-modal__list-item"
-                >
-                  <strong>{{ action.name }}</strong>
-                  <span v-if="action.description">{{ action.description }}</span>
-                </li>
-              </ul>
-            </template>
+            <p v-else-if="workflowData" class="node-modal__description">
+              {{ (triggerNode.find((n) => n.name === templateName) ?? supportedNodeList.find((n) => n.name === templateName))?.description ?? '' }}
+            </p>
           </template>
-          <!-- Workflow node (from canvas Open button) -->
+
+          <!-- Template-only: actions list -->
+          <template v-if="isTemplate && templateData?.actions?.length">
+            <h3 class="node-modal__section-title">Actions</h3>
+            <ul class="node-modal__list">
+              <li
+                v-for="(action, i) in templateData.actions"
+                :key="i"
+                class="node-modal__list-item"
+              >
+                <strong>{{ action.name }}</strong>
+                <span v-if="action.description">{{ action.description }}</span>
+              </li>
+            </ul>
+          </template>
+
+          <!-- Config form (template or workflow node with configuration) -->
+          <template v-if="hasConfigForm">
+            <h3 class="node-modal__section-title">Configuration</h3>
+            <form class="node-modal__form" @submit.prevent="onApply">
+              <div
+                v-for="(field, idx) in configFields"
+                :key="idx"
+                class="node-modal__field"
+              >
+                <label :for="`node-modal-field-${idx}`" class="node-modal__label">
+                  {{ field.label }}
+                  <span v-if="field.required" class="node-modal__required">*</span>
+                </label>
+                <p v-if="field.description" class="node-modal__field-desc">{{ field.description }}</p>
+                <!-- text -->
+                <input
+                  v-if="field.type === 'text'"
+                  :id="`node-modal-field-${idx}`"
+                  v-model="formState[field.label]"
+                  type="text"
+                  class="node-modal__input"
+                  :required="field.required"
+                  :placeholder="(field as { placeholder?: string }).placeholder"
+                />
+                <!-- number -->
+                <input
+                  v-else-if="field.type === 'number'"
+                  :id="`node-modal-field-${idx}`"
+                  v-model.number="formState[field.label]"
+                  type="number"
+                  class="node-modal__input"
+                  :required="field.required"
+                  :min="(field as { min?: number }).min"
+                  :max="(field as { max?: number }).max"
+                />
+                <!-- time -->
+                <input
+                  v-else-if="field.type === 'time'"
+                  :id="`node-modal-field-${idx}`"
+                  v-model="formState[field.label]"
+                  type="time"
+                  class="node-modal__input"
+                  :required="field.required"
+                />
+                <!-- select -->
+                <select
+                  v-else-if="field.type === 'select'"
+                  :id="`node-modal-field-${idx}`"
+                  v-model="formState[field.label]"
+                  class="node-modal__input node-modal__select"
+                  :required="field.required"
+                >
+                  <option
+                    v-for="opt in field.options"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <!-- textarea -->
+                <textarea
+                  v-else-if="field.type === 'textarea'"
+                  :id="`node-modal-field-${idx}`"
+                  v-model="formState[field.label]"
+                  class="node-modal__input node-modal__textarea"
+                  :required="field.required"
+                  :rows="(field as { rows?: number }).rows ?? 3"
+                  :placeholder="(field as { placeholder?: string }).placeholder"
+                />
+                <!-- fallback text -->
+                <input
+                  v-else
+                  :id="`node-modal-field-${idx}`"
+                  v-model="formState[field.label]"
+                  type="text"
+                  class="node-modal__input"
+                  :required="field.required"
+                />
+              </div>
+              <footer class="node-modal__footer">
+                <button type="submit" class="node-modal__apply">
+                  Apply
+                </button>
+              </footer>
+            </form>
+          </template>
+
+          <!-- Workflow node without config form: show raw info -->
           <template v-else-if="workflowData">
             <dl class="node-modal__dl">
               <dt>ID</dt>
@@ -196,6 +364,79 @@ const workflowData = computed(() =>
   display: inline-block;
   min-width: 80px;
   color: #0f172a;
+}
+
+.node-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.node-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-modal__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.node-modal__required {
+  color: #dc2626;
+}
+
+.node-modal__field-desc {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.node-modal__input {
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #0f172a;
+  background: #fff;
+}
+
+.node-modal__input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.node-modal__select {
+  cursor: pointer;
+}
+
+.node-modal__textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.node-modal__footer {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.node-modal__apply {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.node-modal__apply:hover {
+  background: #1d4ed8;
 }
 
 .node-modal__dl {

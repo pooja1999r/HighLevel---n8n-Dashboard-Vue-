@@ -2,6 +2,28 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { WorkflowNodeState } from './workflow'
 
+/** Config field from constants (configuration array item). */
+export interface ConfigFieldOption {
+  label: string
+  value: string
+}
+
+export interface ConfigField {
+  type: string
+  label: string
+  description?: string
+  required?: boolean
+  default?: unknown
+  options?: ConfigFieldOption[]
+  placeholder?: string
+  language?: string
+  rows?: number
+  min?: number
+  max?: number
+  step?: number
+  accept?: string
+}
+
 /** Template node from constants (trigger or supported list). */
 export interface TemplateNodeInfo {
   name: string
@@ -9,6 +31,7 @@ export interface TemplateNodeInfo {
   icon?: string
   url?: string
   actions?: Array<{ name: string; description?: string }>
+  configuration?: ConfigField[]
 }
 
 export type NodeModalPayload =
